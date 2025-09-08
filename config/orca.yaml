@@ -1,0 +1,40 @@
+smpl:
+  model_path: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/assets/body_models
+  model_type: smplx # smpl smplh smplx
+  ext: npz # pkl or npz
+  gender: neutral # male, female, neutral
+  rotation: [90, 0, 90] # rotation in degrees with x y z
+
+mujoco:
+  xml_path: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/assets/cyan_orca/orca.xml
+  root: base_link
+  T_pose_joints:
+    larm_joint2: 90 
+    rarm_joint2: 90
+
+motion_retargeting:
+  shape_file_path: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/best_shape/orca/best_shape_neutral.npz
+
+smpl_robot_mapping:
+  pelvis: ${mujoco.root}
+  left_hip: lleg_link1
+  right_hip: rleg_link1
+  spine1: waist_yaw_link1
+  left_knee: lleg_link4
+  right_knee: rleg_link4
+  # spine2: 
+  left_ankle: lleg_link6
+  right_ankle: rleg_link6
+  # spine3: 
+  # left_foot: 
+  # right_foot: 
+  # neck: 
+  # left_collar: 
+  # right_collar: 
+  # head: head_link3
+  left_shoulder: larm_link2
+  right_shoulder: rarm_link2
+  left_elbow: larm_link4
+  right_elbow: rarm_link4
+  left_wrist: larm_link6
+  right_wrist: rarm_link6
