@@ -18,7 +18,7 @@ def vis_motion(config, human_motion_path, robot_motion_path):
     if human_motion_path is not None:
         # Load motion capture data
         print("Loading human motion capture data...")
-        human_motion_data = smpl_model.load_motion_data(human_motion_path, config.motion_retargeting.shape_file_path)
+        human_motion_data = smpl_model.load_motion_data(human_motion_path, config.motion_retargeting.shape_file_dir)
     if robot_motion_path is not None:
         robot_motion_data = mj_model.load_motion_data(robot_motion_path, regenerate=True)
 

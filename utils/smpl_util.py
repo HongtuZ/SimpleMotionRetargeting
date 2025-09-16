@@ -4,6 +4,7 @@ import torch
 from scipy.spatial.transform import Rotation as R
 from smplx.joint_names import JOINT_NAMES, SMPL_JOINT_NAMES, SMPLH_JOINT_NAMES
 from scipy.interpolate import interp1d
+from pathlib import Path
 
 class SmplModel:
     def __init__(self, model_path, model_type, gender='neutral', ext='npz', rotate_rpy=None, selected_link_names=None, device='cpu'):
@@ -73,18 +74,20 @@ class SmplModel:
     def selected_link_pose(self, **kwargs):
         return self.link_pose(**kwargs)[:, self.selected_link_ids]
 
-    def load_motion_data(self, data_path, shape_file_path=None, device='cpu'):
-        if shape_file_path is not None:
-            print(f"Loading shape file data from {shape_file_path}")
-            shape_data = np.load(shape_file_path)
+    def load_motion_data(self, data_path, shape_file_dir=None, device='cpu'):
+        smplx_data = np.load(data_path, allow_pickle=True)
+        gender = str(smplx_data["gender"])
+        if shape_file_dir is not None:
+            shape_file_path = Path(shape_file_dir)/f'best_shape_{gender}.npz'
+            print(f"Loading shape file data from {str(shape_file_path)}")
+            shape_data = np.load(str(shape_file_path))
             betas = torch.from_numpy(shape_data['shape']).float().to(device)
             scale = torch.from_numpy(shape_data['scale']).float().to(device)
-        smplx_data = np.load(data_path, allow_pickle=True)
         betas = torch.from_numpy(smplx_data['betas']).float().to(device) if shape_file_path is None else betas
         body_model = smplx.create(
             self.model_path,
             self.model_type,
-            gender=str(smplx_data["gender"]),
+            gender=gender,
             use_pca=False,
         ).to(device)
 

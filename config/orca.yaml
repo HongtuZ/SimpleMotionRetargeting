@@ -2,7 +2,7 @@ smpl:
   model_path: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/assets/body_models
   model_type: smplx # smpl smplh smplx
   ext: npz # pkl or npz
-  gender: neutral # male, female, neutral
+  gender: male # male, female, neutral
   rotation: [90, 0, 90] # rotation in degrees with x y z
 
 mujoco:
@@ -13,7 +13,7 @@ mujoco:
     rarm_joint2: 90
 
 motion_retargeting:
-  shape_file_path: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/best_shape/orca/best_shape_neutral.npz
+  shape_file_dir: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/best_shape/orca/
 
 smpl_robot_mapping:
   pelvis: ${mujoco.root}

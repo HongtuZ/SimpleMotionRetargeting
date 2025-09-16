@@ -5,6 +5,8 @@ import argparse
 import numpy as np
 from utils.mujoco_util import MujocoModel
 from omegaconf import OmegaConf
+import mediapy as media
+
 
 def vis_mujoco(config, motion_file_path):
     print("Loading Mujoco model...")
@@ -18,6 +20,9 @@ def vis_mujoco(config, motion_file_path):
     mj_model.model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_PASSIVE  # 禁用被动力
 
     # 启动交互式可视化窗口
+    # frames = []
+    # renderer = mujoco.Renderer(mj_model.model, 480, 640)  # 分辨率
+
     with mujoco.viewer.launch_passive(mj_model.model, mj_model.data) as viewer:
         viewer.cam.distance = 4  # 相机距离
         viewer.cam.azimuth = 180  # 水平旋转角度
@@ -27,6 +32,10 @@ def vis_mujoco(config, motion_file_path):
             mj_model.set_joint_pos(jpos)
             viewer.sync()
             time.sleep(dt)  # 控制循环频率
+    #         renderer.update_scene(mj_model.data)
+    #         frame = renderer.render()
+    #         frames.append(frame)
+    # media.write_video("output.mp4", frames, fps=30)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
 
     # Load motion capture data
     print("Loading motion capture data...")
-    motion_data = smpl_model.load_motion_data(data_path, config.motion_retargeting.shape_file_path, device=device)
+    motion_data = smpl_model.load_motion_data(data_path, config.motion_retargeting.shape_file_dir, device=device)
     smpl_link_pose_batch = motion_data['link_pose'][:, motion_data['selected_link_ids']]
     batch_size = smpl_link_pose_batch.shape[0]
 
