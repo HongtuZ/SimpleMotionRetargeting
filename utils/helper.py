@@ -182,4 +182,6 @@ def show_motions(human_data, robot_data=None):
     ani = FuncAnimation(fig, update, frames=frames, interval=1000/fps, blit=False)
     plt.tight_layout()
     plt.show()
+    # save
+    # ani.save('animation.mp4', writer='ffmpeg', fps=60)
     return ani

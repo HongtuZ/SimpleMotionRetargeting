@@ -7,6 +7,7 @@ from utils import helper
 from utils.smpl_util import SmplModel
 from utils.mujoco_util import MujocoModel
 from pathlib import Path
+from collections import deque
 
 def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     device = torch.device(device)
@@ -32,13 +33,13 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     best_batch_link_pose = None
 
     joint_limits = torch.tensor(mj_model.joint_limits, dtype=torch.float32, device=device)
-    beta = 1.0
+    beta = 0.8
+    loss_history = deque(maxlen=10)
     for iteration in tqdm(range(1000), desc='Fitting motion'):
         mj_link_pose_batch = mj_model.fk_batch(batch_joints)
         loss_pos = torch.norm((mj_link_pose_batch[..., :3] - smpl_link_pose_batch[..., :3]), dim=-1).mean()
-        quat_dot = torch.sum(mj_link_pose_batch[..., 3:] * smpl_link_pose_batch[..., 3:], dim=-1).abs()
-        loss_quat = torch.mean(1 - quat_dot**2)
-        total_loss = beta * loss_pos + (1-beta) * loss_quat
+        loss_smooth = torch.mean((batch_joints[1:] - batch_joints[:-1])**2)
+        total_loss = beta * loss_pos + (1-beta) * loss_smooth
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
@@ -52,7 +53,12 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
                 best_batch_joints = batch_joints.clone().detach()
                 best_batch_link_pose = mj_link_pose_batch.clone().detach()
         if iteration % 10 == 0:
-            tqdm.write(f'Iteration {iteration}, Pos Loss: {loss_pos:.4f}, Quat Loss: {loss_quat:.4f}, Total Loss: {loss_value:.4f}, Best Loss: {best_loss:.4f}')
+            loss_history.append(loss_value)
+            tqdm.write(f'Iteration {iteration}, Pos Loss: {loss_pos:.4f}, Smooth Loss: {loss_smooth:.4f}, Total Loss: {loss_value:.4f}, Best Loss: {best_loss:.4f}')
+        if loss_history and iteration > 50:
+            if abs(loss_history[0] - loss_history[-1]) < 1e-5:
+                print("Early stopping due to minimal loss improvement.")
+                break
     # Save the best qpos_batch
     save_path = Path('retargeted_motion_data') / Path(data_path).name
     save_path.parent.mkdir(parents=True, exist_ok=True)

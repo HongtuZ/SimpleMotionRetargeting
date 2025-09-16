@@ -26,7 +26,7 @@ def vis_mujoco(config, motion_file_path):
         for jpos in motion_data['joint_pos']:
             mj_model.set_joint_pos(jpos)
             viewer.sync()
-            time.sleep(dt*5)  # 控制循环频率
+            time.sleep(dt)  # 控制循环频率
 
 
 if __name__ == "__main__":
