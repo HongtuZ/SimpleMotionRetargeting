@@ -1,6 +1,6 @@
 best_shape/
 data/
-retargeted_motion_data/
+retargeted_data/
 .DS_Store
 .vscode
 __pycache__/

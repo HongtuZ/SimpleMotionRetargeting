@@ -1,6 +1,7 @@
 import mujoco
 import torch
 import numpy as np
+import joblib
 import pytorch_kinematics as pk
 from scipy.spatial.transform import Rotation as R
 
@@ -23,7 +24,6 @@ class MujocoModel:
         self.selected_link_names = list(selected_link_names) if selected_link_names is not None else self.link_names
         self.selected_link_ids = [self.link_names.index(link) for link in self.selected_link_names]
 
-
         if T_pose_joints is not None:
             for joint_name, joint_pos in T_pose_joints.items():
                 if joint_name not in self.joint_names:
@@ -42,26 +42,36 @@ class MujocoModel:
         root_pos = self.data.xpos[self.link_xpos_adr[self.root]]
         link_pos = self.data.xpos[list(self.link_xpos_adr.values())] - root_pos
         link_quat = self.data.xquat[list(self.link_xpos_adr.values())]
-        pose = np.concatenate([link_pos, link_quat], axis=-1)
-        return pose
+        rot_mats = R.from_quat(link_quat, scalar_first=True).as_matrix()
+        transformation_matrices = np.zeros((1, len(self.link_names), 4, 4))
+        transformation_matrices[..., :3, :3] = rot_mats
+        transformation_matrices[..., :3, 3] = link_pos
+        transformation_matrices[..., 3, 3] = 1.0
+        return transformation_matrices
 
     @property
     def selected_link_pose(self):
-        return self.link_pose[self.selected_link_ids]
+        return self.link_pose[:, self.selected_link_ids]
 
-    def set_joint_pos(self, joint_pos):
-        self.data.qpos[list(self.joint_qpos_adr.values())] = joint_pos
+    def set_pose(self, root_pose=None, joint_pos=None):
+        if root_pose is not None:
+            self.data.qpos[:3] = root_pose[:3, 3]
+            root_rot = R.from_matrix(root_pose[:3, :3]).as_quat(scalar_first=True)
+            self.data.qpos[3:7] = root_rot
+        if joint_pos is not None:
+            self.data.qpos[list(self.joint_qpos_adr.values())] = joint_pos
         mujoco.mj_forward(self.model, self.data)
 
     def fk_batch(self, joints):
         frame_ids = self.chain.get_frame_indices(*self.selected_link_names)
         results = self.chain.forward_kinematics(joints, frame_ids)
-        root_pos = results[self.root].pos.clone().detach()
-        link_pose = torch.stack([torch.cat([results[name].pos - root_pos, results[name].rot], dim=-1) for name in self.selected_link_names], dim=1)
-        return link_pose
+        matrices = torch.stack([results[name].get_matrix() for name in self.selected_link_names], dim=1)
+        root_pos = results[self.root].get_matrix()[:, :3, 3].clone().detach().unsqueeze(1)
+        matrices[..., :3, 3] -= root_pos
+        return matrices
 
     def load_motion_data(self, data_path, regenerate=False):
-        data = np.load(data_path, allow_pickle=True)
+        data = joblib.load(data_path)
         link_pose = data['link_pose']
         joints = data['batch_joints']
         if regenerate:

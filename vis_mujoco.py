@@ -6,13 +6,15 @@ import numpy as np
 from utils.mujoco_util import MujocoModel
 from omegaconf import OmegaConf
 import mediapy as media
+import joblib
 
 
 def vis_mujoco(config, motion_file_path):
     print("Loading Mujoco model...")
     mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values())
-    motion_data = mj_model.load_motion_data(motion_file_path)
-    dt = 1.0 / motion_data['fps']
+    data = joblib.load(motion_file_path)
+    robot_data = data['robot_data']
+    dt = 1.0 / robot_data['fps']
 
     # 在仿真循环前设置
     mj_model.model.opt.gravity = (0,0,0)          # 关闭重力
@@ -28,8 +30,8 @@ def vis_mujoco(config, motion_file_path):
         viewer.cam.azimuth = 180  # 水平旋转角度
 
         # 主循环
-        for jpos in motion_data['joint_pos']:
-            mj_model.set_joint_pos(jpos)
+        for root_pose, dof_pos in zip(robot_data['root_pose'], robot_data['dof_pos']):
+            mj_model.set_pose(root_pose=root_pose.cpu().numpy().reshape(4, 4), joint_pos=dof_pos.cpu().numpy().reshape(-1))
             viewer.sync()
             time.sleep(dt)  # 控制循环频率
     #         renderer.update_scene(mj_model.data)
@@ -41,7 +43,7 @@ def vis_mujoco(config, motion_file_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config_path", type=str, help="Path to the config path")
-    parser.add_argument("--robot", type=str, help="Path to the robot motion file", default=None)
+    parser.add_argument("--data", type=str, help="Path to the robot motion file", default=None)
     args = parser.parse_args()
     config = OmegaConf.load(args.config_path)
-    vis_mujoco(config, args.robot)
+    vis_mujoco(config, args.data)

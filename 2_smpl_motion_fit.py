@@ -1,6 +1,7 @@
 import argparse
 import torch
 import numpy as np
+import joblib
 from tqdm import tqdm
 from omegaconf import OmegaConf
 from utils import helper
@@ -8,20 +9,23 @@ from utils.smpl_util import SmplModel
 from utils.mujoco_util import MujocoModel
 from pathlib import Path
 from collections import deque
+from scipy.spatial.transform import Rotation as R
 
 def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     device = torch.device(device)
     # Load the SMPLX model and rotate it to the desired orientation xforward-zup
     print("Loading SMPLX model...")
-    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl.rotation, config.smpl_robot_mapping.keys(), device=device)
+    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device)
     print("Loading Mujoco model...")
     mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), device=device)
 
     # Load motion capture data
     print("Loading motion capture data...")
-    motion_data = smpl_model.load_motion_data(data_path, config.motion_retargeting.shape_file_dir, device=device)
-    smpl_link_pose_batch = motion_data['link_pose'][:, motion_data['selected_link_ids']]
-    batch_size = smpl_link_pose_batch.shape[0]
+    mocap_data = smpl_model.load_motion_data(data_path, shape_file_path=config.motion_retargeting.shape_file, fps=config.motion_retargeting.fps, device=device)
+    # helper.show_motions(human_data=mocap_data)
+
+    smpl_local_body_pose_batch = mocap_data['local_body_pose'][:, mocap_data['matching_ids']]  # [N, L, 4, 4]
+    batch_size = smpl_local_body_pose_batch.shape[0]
 
     # Motion fitting
     batch_joints = torch.zeros((batch_size, len(mj_model.joint_names)), dtype=torch.float32, device=device)
@@ -35,10 +39,19 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     joint_limits = torch.tensor(mj_model.joint_limits, dtype=torch.float32, device=device)
     beta = 0.8
     loss_history = deque(maxlen=10)
+
+    # Forward kinematics under default coordinate system
+    # mj_link_pose_batch = mj_model.fk_batch(batch_joints)
+    # helper.show_frame(smpl_local_body_pose_batch[0].cpu().numpy(), mj_link_pose_batch[0].detach().cpu().numpy())
+    # return
+
     for iteration in tqdm(range(1000), desc='Fitting motion'):
         mj_link_pose_batch = mj_model.fk_batch(batch_joints)
-        loss_pos = torch.norm((mj_link_pose_batch[..., :3] - smpl_link_pose_batch[..., :3]), dim=-1).mean()
-        loss_smooth = torch.mean((batch_joints[1:] - batch_joints[:-1])**2)
+        # Compute loss
+        loss_pos = torch.norm((mj_link_pose_batch[..., :3, 3] - smpl_local_body_pose_batch[..., :3, 3]), dim=-1).mean()
+        # loss_smooth = torch.mean((batch_joints)**2)
+        # loss_smooth = torch.mean((batch_joints[1:] - batch_joints[:-1])**2)
+        loss_smooth = torch.mean((batch_joints[2:] - 2*batch_joints[1:-1] + batch_joints[:-2])**2)
         total_loss = beta * loss_pos + (1-beta) * loss_smooth
         optimizer.zero_grad()
         total_loss.backward()
@@ -60,15 +73,31 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
                 print("Early stopping due to minimal loss improvement.")
                 break
     # Save the best qpos_batch
-    save_path = Path('retargeted_motion_data') / Path(data_path).name
+    save_path = Path('retargeted_data') / Path(data_path).with_suffix('.pkl').name
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    tqdm.write(f'Saving retargeted motion data to {str(save_path)}')
-    np.savez_compressed(save_path, batch_joints=best_batch_joints.cpu().numpy(), link_pose=best_batch_link_pose.cpu().numpy(), fps=motion_data['fps'])
+    tqdm.write(f'Saving retargeted mocap data to {str(save_path)}')
+    # joblib.dump({
+    #     'mocap_data': mocap_data,
+    #     'robot_data': {
+    #         'fps': mocap_data['fps'],
+    #         'root_pose': mocap_data['root_pose'],
+    #         'local_body_pose': best_batch_link_pose,
+    #         'dof_pos': best_batch_joints,
+    #         'link_body_list': mj_model.selected_link_names,
+    #     }
+    # }, str(save_path))
+    joblib.dump({
+        'fps': mocap_data['fps'],
+        'root_pose': mocap_data['root_pose'].cpu().numpy(),
+        'local_body_pose': best_batch_link_pose.cpu().numpy(),
+        'dof_pos': best_batch_joints.cpu().numpy(),
+        'link_body_list': mj_model.selected_link_names,
+    }, str(save_path))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=str, help="Path to the config file")
-    parser.add_argument("--human", required=True, type=str, help="Path to the human data file")
+    parser.add_argument("--data", required=True, type=str, help="Path to the human data file")
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
-    smpl_motion_fit(config, data_path=args.human, device='mps')
+    smpl_motion_fit(config, data_path=args.data, device='mps')
