@@ -1,19 +1,19 @@
-device: cuda # cpu, cuda for nvidia, mps for macos
+device: cpu # cpu, cuda for nvidia, mps for macos
 smpl:
-  model_path: /home/robot/hongtu/SimpleMotionRetargeting/assets/body_models
+  model_path: assets/body_models
   model_type: smplx # smpl smplh smplx
   ext: npz # pkl or npz
   gender: neutral # male, female, neutral
 
 mujoco:
-  xml_path: /home/robot/hongtu/SimpleMotionRetargeting/assets/cyan_orca/orca.xml
+  xml_path: assets/cyan_orca/orca.xml
   root: base_link
   T_pose_joints:
     larm_joint2: 90 
     rarm_joint2: 90
 
 motion_retargeting:
-  shape_file: /Users/zhouhongtu/Desktop/ths/SimpleMotionRetargeting/best_shape/orca_shape.pkl
+  shape_file: best_shape/orca_shape.pkl
   fps: 50
 
 smpl_robot_mapping:

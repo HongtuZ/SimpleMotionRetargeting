@@ -15,7 +15,8 @@ def smpl_shape_fit(config: OmegaConf, device='cpu'):
     # Load the SMPLX model and rotate it to the desired orientation xforward-zup
     smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device)
     mj_model= MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), config.mujoco.T_pose_joints, device=device)
-    # helper.show_joints(smpl_model, mj_model, selected=True)
+    # helper.show_joints(smpl_model, mj_model, selected=False)
+    # return
 
     # Relative link rotation from SMPL to MuJoCo model
     smpl2robot_rot_mat = np.tile(np.eye(3), (len(smpl_model.link_names), 1, 1))[None]
@@ -27,7 +28,7 @@ def smpl_shape_fit(config: OmegaConf, device='cpu'):
     # Shape fitting
     shape_new = torch.nn.Parameter(torch.zeros([1, smpl_model.num_betas], device=device))
     scale = torch.nn.Parameter(torch.ones([1], device=device))
-    optimizer_shape = torch.optim.AdamW([shape_new, scale],lr=0.01)
+    optimizer = torch.optim.AdamW([shape_new, scale],lr=0.003)
 
     best_shape = None
     best_scale = None
@@ -43,9 +44,9 @@ def smpl_shape_fit(config: OmegaConf, device='cpu'):
             best_scale = scale.clone().detach()
         if iteration % 100 == 0:
             tqdm.write(f'Iteration {iteration}, Loss: {loss.item()*1000:.4f}, Best Loss: {best_loss.item()*1000:.4f}, Best Scale: {best_scale.item():.4f}')
-        optimizer_shape.zero_grad()
+        optimizer.zero_grad()
         loss.backward()
-        optimizer_shape.step()
+        optimizer.step()
         loss_history.append(best_loss.item())
         if len(loss_history) == loss_history.maxlen and np.std(loss_history) < 1e-8:
             print("Early stopping due to convergence.")

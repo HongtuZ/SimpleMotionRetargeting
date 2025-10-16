@@ -17,13 +17,14 @@ class SmplModel:
         self.model_path = model_path
         self.model_type = model_type
         self.device = device
+        global_orient = torch.from_numpy(R.from_euler('xyz', [np.pi/2, 0, np.pi/2], degrees=False).as_rotvec()).float().to(self.device).view(1,-1)
         self.body_model = smplx.create(
             model_path,
             model_type,
+            global_orient=global_orient,
             gender=gender,
             use_pca=False,
             ext=ext,
-            dtype=torch.float
         ).to(device)
         self.link_parent_ids = self.body_model.parents
         if model_type == 'smplx':
@@ -57,15 +58,15 @@ class SmplModel:
         tgt_rot_mats = torch.zeros_like(rot_mats)
         for i in range(len(parents)):
             if parents[i] == -1:
+                tgt_rot_mats[:, i] = rot_mats[:, i]
                 continue
-            tgt_rot_mats[:, i] = rot_mats[:, parents[i]].clone().detach() @ rot_mats[:, i]
+            tgt_rot_mats[:, i] = tgt_rot_mats[:, parents[i]].clone().detach() @ rot_mats[:, i]
 
         transformation_matrices = torch.zeros((1, len(self.link_names), 4, 4), dtype=torch.float32, device=pos_xyz.device)
         transformation_matrices[..., :3, :3] = tgt_rot_mats @ self.link_rot_mats
         transformation_matrices[..., :3, 3] = pos_xyz
         transformation_matrices[..., 3, 3] = 1.0
 
-        transformation_matrices = self.base_rot_transform @ transformation_matrices
         return transformation_matrices
 
     def selected_link_pose(self, **kwargs):
