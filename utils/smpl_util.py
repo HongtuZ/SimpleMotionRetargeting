@@ -75,9 +75,9 @@ class SmplModel:
     def load_motion_data(self, data_path, shape_file_path=None, fps=None, device='cpu'):
         # 1. Load SMPL-X data
         smplx_data = np.load(data_path, allow_pickle=True)
-        poses = torch.from_numpy(smplx_data['poses']).float().to(device)[:1000]   # [N, 165]
+        poses = torch.from_numpy(smplx_data['poses']).float().to(device)   # [N, 165]
         betas = torch.from_numpy(smplx_data['betas']).float().to(device).reshape(1, -1)
-        trans = torch.from_numpy(smplx_data['trans']).float().to(device)[:1000]   # [N, 3]
+        trans = torch.from_numpy(smplx_data['trans']).float().to(device)   # [N, 3]
         num_frames = poses.shape[0]
         scale = torch.ones((1,), dtype=torch.float32, device=device)
         smpl2robot_rot_mat = torch.eye(3).unsqueeze(0).to(device).repeat(len(self.link_names), 1, 1).unsqueeze(0)  # [1, L, 4, 4]
@@ -92,39 +92,49 @@ class SmplModel:
 
         # 3. Forward pass
         with torch.no_grad():
-            output = self.body_model(
+            res = self.body_model(
                 betas=betas,
                 global_orient= poses[:, :3],
                 transl=trans,
                 body_pose=poses[:, 3:66],
                 left_hand_pose=poses[:, 66:111],
                 right_hand_pose=poses[:, 111:156],
-                jaw_pose=poses[:, 156:159],
-                leye_pose=poses[:, 159:162],
-                reye_pose=poses[:, 162:165],
+                jaw_pose=torch.zeros((num_frames, 3), dtype=torch.float32, device=device),
+                leye_pose=torch.zeros((num_frames, 3), dtype=torch.float32, device=device),
+                reye_pose=torch.zeros((num_frames, 3), dtype=torch.float32, device=device),
+                expression=torch.zeros((num_frames, 10), dtype=torch.float32, device=device),
                 return_full_pose=True,
             )
 
-        parents = self.body_model.parents
-        full_pose = output.full_pose.reshape(num_frames, -1, 3)[:, :len(parents)]
+        full_pose = res.full_pose.reshape(num_frames, -1, 3)[:, :len(self.link_names)]
         rot_mats = axis_angle_to_matrix(full_pose)
-        root_pos = output.joints[:, :1]
-        pos_xyz = (output.joints[:, :len(parents)] - root_pos) * scale + root_pos
-        transformation_matrices = torch.from_numpy(np.tile(np.eye(4), (num_frames, pos_xyz.shape[1], 1, 1))).float().to(device)
-        transformation_matrices[..., :3, :3] = rot_mats
-        transformation_matrices[..., :3, 3] = pos_xyz
-
+        root_pos = res.joints[:, :1]
+        pos_xyz = (res.joints[:, :len(self.link_names)] - root_pos) * scale + root_pos
+        parents = self.body_model.parents
+        tgt_rot_mats = torch.zeros_like(rot_mats)
         for i in range(len(parents)):
             if parents[i] == -1:
+                tgt_rot_mats[:, i] = rot_mats[:, i]
                 continue
-            transformation_matrices[:, i, :3, :3] = transformation_matrices[:, parents[i], :3, :3] @ transformation_matrices[:, i, :3, :3]
-        transformation_matrices[..., :3, :3] = transformation_matrices[..., :3, :3] @ self.link_rot_mats
+            tgt_rot_mats[:, i] = tgt_rot_mats[:, parents[i]] @ rot_mats[:, i]
+
+        transformation_matrices = torch.zeros((num_frames, len(self.link_names), 4, 4), dtype=torch.float32, device=pos_xyz.device)
+        transformation_matrices[..., :3, :3] = tgt_rot_mats @ self.link_rot_mats
+        transformation_matrices[..., :3, 3] = pos_xyz
+        transformation_matrices[..., 3, 3] = 1.0
+
         transformation_matrices = self.to_zup(transformation_matrices)
         root_transform = transformation_matrices[:, :1].clone()
         transformation_matrices = self.to_local(transformation_matrices)
 
         # Sample down to target fps
-        data_fps = smplx_data['mocap_frame_rate']
+        data_fps = -1
+        for fps_key in ['mocap_frame_rate', 'mocap_framerate']:
+            if fps_key in smplx_data:
+                data_fps = smplx_data[fps_key]
+                break
+        if data_fps < 0:
+            raise ValueError(f"Frame rate information not found in the SMPL-X data: {data_path}, available keys: {list(smplx_data.keys())}")
         if fps is not None and fps < data_fps:
             transformation_matrices = ptu.interpolate_mocap_se3(
                 transformation_matrices, data_fps, fps

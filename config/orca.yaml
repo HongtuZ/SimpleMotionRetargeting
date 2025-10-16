@@ -1,4 +1,4 @@
-device: cpu # cpu, cuda for nvidia, mps for macos
+device: cuda # cpu, cuda for nvidia, mps for macos
 smpl:
   model_path: assets/body_models
   model_type: smplx # smpl smplh smplx
