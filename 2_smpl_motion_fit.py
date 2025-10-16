@@ -97,4 +97,4 @@ if __name__ == "__main__":
     parser.add_argument("--data", required=True, type=str, help="Path to the human data file")
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
-    smpl_motion_fit(config, data_path=args.data, device='mps')
+    smpl_motion_fit(config, data_path=args.data, device=config.device)

@@ -13,25 +13,26 @@ from collections import deque
 def smpl_shape_fit(config: OmegaConf, device='cpu'):
     device = torch.device(device)
     # Load the SMPLX model and rotate it to the desired orientation xforward-zup
-    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys())
-    mj_model= MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), config.mujoco.T_pose_joints)
+    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device)
+    mj_model= MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), config.mujoco.T_pose_joints, device=device)
+    # helper.show_joints(smpl_model, mj_model, selected=True)
 
     # Relative link rotation from SMPL to MuJoCo model
     smpl2robot_rot_mat = np.tile(np.eye(3), (len(smpl_model.link_names), 1, 1))[None]
     smpl_rot = smpl_model.selected_link_pose()[..., :3, :3].detach().cpu().numpy()
     mj_rot = mj_model.selected_link_pose[..., :3, :3]
     selected_smpl2robot_rot_mat = np.matmul(np.swapaxes(smpl_rot, -1, -2), mj_rot)
-    # smpl2robot_rot_mat[:, smpl_model.selected_link_ids] = selected_smpl2robot_rot_mat
+    smpl2robot_rot_mat[:, smpl_model.selected_link_ids] = selected_smpl2robot_rot_mat
 
     # Shape fitting
     shape_new = torch.nn.Parameter(torch.zeros([1, smpl_model.num_betas], device=device))
     scale = torch.nn.Parameter(torch.ones([1], device=device))
-    optimizer_shape = torch.optim.AdamW([shape_new, scale],lr=0.003)
+    optimizer_shape = torch.optim.AdamW([shape_new, scale],lr=0.01)
 
     best_shape = None
     best_scale = None
     best_loss = np.inf
-    loss_history = deque(maxlen=10)
+    loss_history = deque(maxlen=100)
     for iteration in tqdm(range(10000), desc='Fitting shape and scale'):
         mj_link_pos = torch.from_numpy(mj_model.selected_link_pose).float().to(device)[..., :3, 3]
         smpl_link_pos = smpl_model.selected_link_pose(betas=shape_new)[..., :3, 3] * scale
@@ -46,7 +47,7 @@ def smpl_shape_fit(config: OmegaConf, device='cpu'):
         loss.backward()
         optimizer_shape.step()
         loss_history.append(best_loss.item())
-        if len(loss_history) == loss_history.maxlen and np.std(loss_history) < 1e-5:
+        if len(loss_history) == loss_history.maxlen and np.std(loss_history) < 1e-8:
             print("Early stopping due to convergence.")
             break
     # Save the shape
@@ -67,4 +68,4 @@ if __name__ == "__main__":
     parser.add_argument("config", type=str, help="Path to the config file")
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
-    smpl_shape_fit(config, device='cpu')
+    smpl_shape_fit(config, device=config.device)

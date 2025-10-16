@@ -19,25 +19,25 @@ def show_joints(smpl_model, mj_model, betas=None, scale=1.0, selected=False, smp
     if smpl2robot_rot_mat is not None:
         Rmat = np.matmul(smpl2robot_rot_mat[:, smpl_model.selected_link_ids].squeeze(), Rmat)
 
-    # ax.scatter(positions[:, 0], positions[:, 1], positions[:, 2], c='k', s=30)
-    # # 坐标轴 (X=红, Y=绿, Z=蓝)
-    # for i in range(positions.shape[0]):
-    #     p = positions[i]
-    #     rot = Rmat[i]
-    #     ax.plot([p[0], p[0] + rot[0, 0]*axis_len], [p[1], p[1] + rot[1, 0]*axis_len], [p[2], p[2] + rot[2, 0]*axis_len], c='r')
-    #     ax.plot([p[0], p[0] + rot[0, 1]*axis_len], [p[1], p[1] + rot[1, 1]*axis_len], [p[2], p[2] + rot[2, 1]*axis_len], c='g')
-    #     ax.plot([p[0], p[0] + rot[0, 2]*axis_len], [p[1], p[1] + rot[1, 2]*axis_len], [p[2], p[2] + rot[2, 2]*axis_len], c='b')
+    ax.scatter(positions[:, 0], positions[:, 1], positions[:, 2], c='k', s=30)
+    # 坐标轴 (X=红, Y=绿, Z=蓝)
+    for i in range(positions.shape[0]):
+        p = positions[i]
+        rot = Rmat[i]
+        ax.plot([p[0], p[0] + rot[0, 0]*axis_len], [p[1], p[1] + rot[1, 0]*axis_len], [p[2], p[2] + rot[2, 0]*axis_len], c='r')
+        ax.plot([p[0], p[0] + rot[0, 1]*axis_len], [p[1], p[1] + rot[1, 1]*axis_len], [p[2], p[2] + rot[2, 1]*axis_len], c='g')
+        ax.plot([p[0], p[0] + rot[0, 2]*axis_len], [p[1], p[1] + rot[1, 2]*axis_len], [p[2], p[2] + rot[2, 2]*axis_len], c='b')
 
-    # # 连接父子关节
-    # smpl_pose = smpl_model.link_pose(betas=betas).detach().cpu().numpy().squeeze()[:22]
-    # for i, parent in enumerate(smpl_model.link_parent_ids[:smpl_pose.shape[0]]):
-    #     pos = smpl_pose[i, :3, 3]*scale
-    #     ax.text(pos[0], pos[1], pos[2], smpl_model.link_names[i], fontsize=8)
-    #     if parent != -1:
-    #         ppos = smpl_pose[parent, :3, 3]*scale
-    #         ax.plot([pos[0], ppos[0]],
-    #                 [pos[1], ppos[1]],
-    #                 [pos[2], ppos[2]], 'r-')
+    # 连接父子关节
+    smpl_pose = smpl_model.link_pose(betas=betas).detach().cpu().numpy().squeeze()[:22]
+    for i, parent in enumerate(smpl_model.link_parent_ids[:smpl_pose.shape[0]]):
+        pos = smpl_pose[i, :3, 3]*scale
+        ax.text(pos[0], pos[1], pos[2], smpl_model.link_names[i], fontsize=8)
+        if parent != -1:
+            ppos = smpl_pose[parent, :3, 3]*scale
+            ax.plot([pos[0], ppos[0]],
+                    [pos[1], ppos[1]],
+                    [pos[2], ppos[2]], 'r-')
     mj_pose = mj_model.selected_link_pose if selected else mj_model.link_pose
     mj_xnames = mj_model.selected_link_names if selected else mj_model.link_names
     # 前3维是位置，后4维是四元数(w, x, y, z)

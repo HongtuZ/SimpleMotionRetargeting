@@ -1,2 +1,12 @@
-torch
-"git+https://github.com/facebookresearch/pytorch3d.git"
+smplx[all]
+mujoco
+absl-py
+lxml
+pyyaml
+matplotlib
+pytorch_seed
+arm_pytorch_utilities
+joblib
+omegaconf
+tqdm
+git+https://github.com/facebookresearch/pytorch3d.git

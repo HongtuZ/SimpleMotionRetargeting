@@ -3,14 +3,17 @@ import smplx
 import torch
 import joblib
 from scipy.spatial.transform import Rotation as R
-from smplx.joint_names import JOINT_NAMES, SMPL_JOINT_NAMES, SMPLH_JOINT_NAMES
+from smplx.joint_names import JOINT_NAMES, SMPLH_JOINT_NAMES
 from pathlib import Path
 from pytorch3d.transforms import axis_angle_to_matrix
 from itertools import permutations, product
 from utils import pytorch_util as ptu
+from pathlib import Path
 
 class SmplModel:
     def __init__(self, model_path, model_type, gender='neutral', ext='npz', selected_link_names=None, device='cpu'):
+        if not Path(model_path).exists():
+            raise FileNotFoundError(f"Model path {model_path} does not exist. Please modify the path in config file.")
         self.model_path = model_path
         self.model_type = model_type
         self.device = device
@@ -25,8 +28,6 @@ class SmplModel:
         self.link_parent_ids = self.body_model.parents
         if model_type == 'smplx':
             self.link_names = JOINT_NAMES[: len(self.link_parent_ids)]
-        elif model_type == 'smpl':
-            self.link_names = SMPL_JOINT_NAMES[: len(self.link_parent_ids)]
         elif model_type == 'smplh':
             self.link_names = SMPLH_JOINT_NAMES[: len(self.link_parent_ids)]
         else:
@@ -39,6 +40,10 @@ class SmplModel:
                 raise ValueError(f"Selected link {link_name} not found in link names.")
             self.selected_link_ids.append(self.link_names.index(link_name))
 
+        self.link_rot_mats = torch.from_numpy(R.from_quat([0.5, -0.5, -0.5, -0.5], scalar_first=True).as_matrix()).float().to(device).unsqueeze(0).unsqueeze(0)  # (1,1,3,3)
+        self.base_rot_transform = torch.eye(4).float().to(self.device).unsqueeze(0).unsqueeze(0)  # (1,1,4,4)
+        self.base_rot_transform[..., :3, :3] = torch.from_numpy(R.from_euler('xyz', [np.pi/2, 0, np.pi/2], degrees=False).as_matrix()).float().to(self.device)
+
     @property
     def num_betas(self):
         return self.body_model.num_betas
@@ -48,22 +53,19 @@ class SmplModel:
         full_pose = res.full_pose.reshape(1, -1, 3)[:, :len(self.link_names)]
         rot_mats = axis_angle_to_matrix(full_pose)
         pos_xyz = res.joints[:, :len(self.link_names)] - res.joints[:, 0].clone().detach()
-        transformation_matrices = torch.zeros((1, len(self.link_names), 4, 4), dtype=torch.float32, device=pos_xyz.device)
-        transformation_matrices[..., :3, :3] = rot_mats
-        transformation_matrices[..., :3, 3] = pos_xyz
-        transformation_matrices[..., 3, 3] = 1.0
-        # transformation_matrices = self.base_rotation_mat @ transformation_matrices @ self.base_rotation_mat.transpose(-1, -2)
         parents = self.body_model.parents
+        tgt_rot_mats = torch.zeros_like(rot_mats)
         for i in range(len(parents)):
             if parents[i] == -1:
                 continue
-            transformation_matrices[:, i, :3, :3] = transformation_matrices[:, parents[i], :3, :3] @ transformation_matrices[:, i, :3, :3]
-        base_rot_mats = torch.from_numpy(R.from_quat([0.5, -0.5, -0.5, -0.5], scalar_first=True).as_matrix()).float().to(pos_xyz.device).unsqueeze(0).unsqueeze(0)  # (1,1,3,3)
-        transformation_matrices[..., :3, :3] = transformation_matrices[..., :3, :3] @ base_rot_mats
+            tgt_rot_mats[:, i] = rot_mats[:, parents[i]].clone().detach() @ rot_mats[:, i]
 
-        base_rotation_mat = torch.eye(4).float().to(self.device).unsqueeze(0).unsqueeze(0)  # (1,1,4,4)
-        base_rotation_mat[..., :3, :3] = torch.from_numpy(R.from_euler('xyz', [np.pi/2, 0, np.pi/2], degrees=False).as_matrix()).float().to(self.device)
-        transformation_matrices = base_rotation_mat @ transformation_matrices
+        transformation_matrices = torch.zeros((1, len(self.link_names), 4, 4), dtype=torch.float32, device=pos_xyz.device)
+        transformation_matrices[..., :3, :3] = tgt_rot_mats @ self.link_rot_mats
+        transformation_matrices[..., :3, 3] = pos_xyz
+        transformation_matrices[..., 3, 3] = 1.0
+
+        transformation_matrices = self.base_rot_transform @ transformation_matrices
         return transformation_matrices
 
     def selected_link_pose(self, **kwargs):
@@ -115,8 +117,7 @@ class SmplModel:
             if parents[i] == -1:
                 continue
             transformation_matrices[:, i, :3, :3] = transformation_matrices[:, parents[i], :3, :3] @ transformation_matrices[:, i, :3, :3]
-        base_rot_mats = torch.from_numpy(R.from_quat([0.5, -0.5, -0.5, -0.5], scalar_first=True).as_matrix()).float().to(pos_xyz.device).unsqueeze(0).unsqueeze(0)  # (1,1,3,3)
-        transformation_matrices[..., :3, :3] = transformation_matrices[..., :3, :3] @ base_rot_mats
+        transformation_matrices[..., :3, :3] = transformation_matrices[..., :3, :3] @ self.link_rot_mats
         transformation_matrices = self.to_zup(transformation_matrices)
         root_transform = transformation_matrices[:, :1].clone()
         transformation_matrices = self.to_local(transformation_matrices)
