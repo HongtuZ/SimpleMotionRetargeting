@@ -12,8 +12,7 @@ import joblib
 def vis_mujoco(config, motion_file_path):
     print("Loading Mujoco model...")
     mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values())
-    data = joblib.load(motion_file_path)
-    robot_data = data['robot_data']
+    robot_data = joblib.load(motion_file_path)
     dt = 1.0 / robot_data['fps']
 
     # 在仿真循环前设置
@@ -30,10 +29,10 @@ def vis_mujoco(config, motion_file_path):
         viewer.cam.azimuth = 180  # 水平旋转角度
 
         # 主循环
-        for root_pose, dof_pos in zip(robot_data['root_pose'], robot_data['dof_pos']):
-            mj_model.set_pose(root_pose=root_pose.cpu().numpy().reshape(4, 4), joint_pos=dof_pos.cpu().numpy().reshape(-1))
+        for root_pos, root_rot, dof_pos in zip(robot_data['root_pos'], robot_data['root_rot'], robot_data['dof_pos']):
+            mj_model.set_pose(root_pos=root_pos, root_rot=root_rot, joint_pos=dof_pos)
             viewer.sync()
-            time.sleep(dt)  # 控制循环频率
+            time.sleep(2*dt)  # 控制循环频率
     #         renderer.update_scene(mj_model.data)
     #         frame = renderer.render()
     #         frames.append(frame)

@@ -48,7 +48,7 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     for iteration in tqdm(range(1000), desc='Fitting motion'):
         mj_link_pose_batch = mj_model.fk_batch(batch_joints)
         # Compute loss
-        loss_pos = torch.norm((mj_link_pose_batch[..., :3, 3] - smpl_local_body_pose_batch[..., :3, 3]), dim=-1).mean()
+        loss_pos = torch.norm((mj_link_pose_batch[:, mj_model.selected_link_ids, :3, 3] - smpl_local_body_pose_batch[..., :3, 3]), dim=-1).mean()
         # loss_smooth = torch.mean((batch_joints)**2)
         # loss_smooth = torch.mean((batch_joints[1:] - batch_joints[:-1])**2)
         loss_smooth = torch.mean((batch_joints[2:] - 2*batch_joints[1:-1] + batch_joints[:-2])**2)
@@ -72,26 +72,23 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
             if abs(loss_history[0] - loss_history[-1]) < 1e-5:
                 print("Early stopping due to minimal loss improvement.")
                 break
+    # Calculate the offset z
+    root_pose = mocap_data['root_pose']
+    global_pose = torch.matmul(root_pose, best_batch_link_pose)
+    z_offset = torch.min(global_pose[..., 2, 3], dim=1, keepdim=True)
+    root_pose[..., 2, 3] -= z_offset.values
     # Save the best qpos_batch
     save_path = Path('retargeted_data') / Path(data_path).with_suffix('.pkl').name
     save_path.parent.mkdir(parents=True, exist_ok=True)
     tqdm.write(f'Saving retargeted mocap data to {str(save_path)}')
-    # joblib.dump({
-    #     'mocap_data': mocap_data,
-    #     'robot_data': {
-    #         'fps': mocap_data['fps'],
-    #         'root_pose': mocap_data['root_pose'],
-    #         'local_body_pose': best_batch_link_pose,
-    #         'dof_pos': best_batch_joints,
-    #         'link_body_list': mj_model.selected_link_names,
-    #     }
-    # }, str(save_path))
     joblib.dump({
         'fps': mocap_data['fps'],
-        'root_pose': mocap_data['root_pose'].cpu().numpy(),
-        'local_body_pose': best_batch_link_pose.cpu().numpy(),
+        'root_pos': root_pose.squeeze().cpu().numpy()[..., :3, 3],
+        'root_rot': R.from_matrix(root_pose.squeeze()[..., :3, :3].cpu().numpy()).as_quat(),
+        'local_body_pos': best_batch_link_pose.squeeze().cpu().numpy()[..., :3, 3],
         'dof_pos': best_batch_joints.cpu().numpy(),
-        'link_body_list': mj_model.selected_link_names,
+        'link_body_list': mj_model.link_names,
+        'dof_list': mj_model.joint_names,
     }, str(save_path))
 
 if __name__ == "__main__":

@@ -53,19 +53,19 @@ class MujocoModel:
     def selected_link_pose(self):
         return self.link_pose[:, self.selected_link_ids]
 
-    def set_pose(self, root_pose=None, joint_pos=None):
-        if root_pose is not None:
-            self.data.qpos[:3] = root_pose[:3, 3]
-            root_rot = R.from_matrix(root_pose[:3, :3]).as_quat(scalar_first=True)
-            self.data.qpos[3:7] = root_rot
+    def set_pose(self, root_pos=None, root_rot=None, joint_pos=None):
+        if root_pos is not None:
+            self.data.qpos[:3] = root_pos
+        if root_rot is not None:
+            self.data.qpos[3:7] = np.roll(root_rot, 1)  # xyzw -> wxyz
         if joint_pos is not None:
             self.data.qpos[list(self.joint_qpos_adr.values())] = joint_pos
         mujoco.mj_forward(self.model, self.data)
 
     def fk_batch(self, joints):
-        frame_ids = self.chain.get_frame_indices(*self.selected_link_names)
+        frame_ids = self.chain.get_frame_indices(*self.link_names)
         results = self.chain.forward_kinematics(joints, frame_ids)
-        matrices = torch.stack([results[name].get_matrix() for name in self.selected_link_names], dim=1)
+        matrices = torch.stack([results[name].get_matrix() for name in self.link_names], dim=1)
         root_pos = results[self.root].get_matrix()[:, :3, 3].clone().detach().unsqueeze(1)
         matrices[..., :3, 3] -= root_pos
         return matrices
