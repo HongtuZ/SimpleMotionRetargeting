@@ -96,17 +96,16 @@ def show_motions(human_data=None, robot_data=None):
             return x.cpu().numpy()
         return np.asarray(x)
 
-    def quat_wxyz_to_mat4(q):
+    def quat_xyzw_to_mat4(q):
         """
-        q: (T,4) quaternion (w,x,y,z)
+        q: (T,4) quaternion (x,y,z,w)
         returns: (T,4,4) homogeneous matrices
         """
         q = np.asarray(q)
         if q.shape[-1] != 4:
             raise ValueError("Quaternion must have shape (..., 4)")
         # SciPy expects (x, y, z, w)
-        q_xyzw = q[..., [1, 2, 3, 0]]
-        rot = R.from_quat(q_xyzw)
+        rot = R.from_quat(q)
         rot_mats = rot.as_matrix()  # (T,3,3)
         T = rot_mats.shape[0]
         mats = np.tile(np.eye(4), (T, 1, 1))
@@ -161,7 +160,7 @@ def show_motions(human_data=None, robot_data=None):
             raise ValueError("robot_data must contain root_pos, root_rot, local_body_pos")
 
         T = root_pos.shape[0]
-        root_T = quat_wxyz_to_mat4(root_rot)
+        root_T = quat_xyzw_to_mat4(root_rot)
         root_T[:, :3, 3] = root_pos
 
         if local_body_pos.ndim == 2:
@@ -268,9 +267,9 @@ def show_motions(human_data=None, robot_data=None):
         return []
 
     ani = FuncAnimation(fig, update, frames=frames, interval=1000/fps, blit=False)
-    ani.save('animation.mp4', writer='ffmpeg', fps=fps, dpi=300)
-    # plt.tight_layout()
-    # plt.show()
+    # ani.save('animation.mp4', writer='ffmpeg', fps=fps, dpi=300)
+    plt.tight_layout()
+    plt.show()
     return ani
 
 
