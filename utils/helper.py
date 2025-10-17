@@ -64,19 +64,25 @@ def show_joints(smpl_model, mj_model, betas=None, scale=1.0, selected=False, smp
     ax.set_zlim([-2, 2])
     plt.show()
 
-def show_motions(human_data, robot_data=None):
+def show_motions(human_data=None, robot_data=None):
     """
     叠加显示 human 与 robot 关节/骨骼动画 (overlay 模式固定).
     期望数据字典字段:
     human_data{
-      link_pose: (T, J, 4, 4)  Tensor 或 ndarray
-      link_parent_ids: (J,)
-      selected_link_ids: (K,)  (可选, 不提供则使用全部前22个)
-      fps: int
+        'fps': int,
+        "root_pose": (T, 1, 4, 4)  Tensor 或 ndarray,
+        "local_body_pose": (T, J, 4, 4)  Tensor 或 ndarray,
+        'parent_ids': list 或 ndarray,
+        'matching_ids': list 或 ndarray,
     }
     robot_data{
-      link_pose: (T, J, 4, 4)  Tensor 或 ndarray
-      fps: int
+        'fps': int,
+        'root_pos': (T, 3)  Tensor 或 ndarray,
+        'root_rot': (T, 4)  Tensor 或 ndarray,
+        'local_body_pos': (T, J, 3)  Tensor 或 ndarray,
+        'dof_pos': (T, D)  Tensor 或 ndarray,
+        'link_body_list': (N,)  list of str,
+        'dof_list': (J,)  list of str,
     }
     """
     if human_data is None and robot_data is None:
@@ -84,45 +90,115 @@ def show_motions(human_data, robot_data=None):
         return
 
     def to_np(x):
-        if x is None: return None
-        if hasattr(x, 'cpu'): return x.cpu().numpy()
+        if x is None:
+            return None
+        if hasattr(x, "cpu"):
+            return x.cpu().numpy()
         return np.asarray(x)
 
-    def prep(d):
-        if d is None: return None
-        root_pose = to_np(d['root_pose'])
-        local_body_pose = to_np(d['local_body_pose'])[:, :22]
+    def quat_wxyz_to_mat4(q):
+        """
+        q: (T,4) quaternion (w,x,y,z)
+        returns: (T,4,4) homogeneous matrices
+        """
+        q = np.asarray(q)
+        if q.shape[-1] != 4:
+            raise ValueError("Quaternion must have shape (..., 4)")
+        # SciPy expects (x, y, z, w)
+        q_xyzw = q[..., [1, 2, 3, 0]]
+        rot = R.from_quat(q_xyzw)
+        rot_mats = rot.as_matrix()  # (T,3,3)
+        T = rot_mats.shape[0]
+        mats = np.tile(np.eye(4), (T, 1, 1))
+        mats[:, :3, :3] = rot_mats
+        return mats
+
+    def make_homogeneous_translations(t):
+        """
+        t: (...,3)
+        returns: (...,4,4) homogeneous transforms (identity rotation + translation)
+        """
+        t = np.asarray(t)
+        orig_shape = t.shape[:-1]
+        t = t.reshape(-1, 3)
+        M = np.tile(np.eye(4), (t.shape[0], 1, 1))
+        M[:, :3, 3] = t
+        return M.reshape((*orig_shape, 4, 4))
+
+    def prep_human(d):
+        if d is None:
+            return None
+        root_pose = to_np(d.get("root_pose"))
+        local_body_pose = to_np(d.get("local_body_pose"))
+        if root_pose is None or local_body_pose is None:
+            raise ValueError("human_data must contain 'root_pose' and 'local_body_pose'")
+        T = local_body_pose.shape[0]
+        if root_pose.shape[0] == 1:
+            root_pose = np.repeat(root_pose, T, axis=0)
+        if root_pose.ndim == 3:
+            root_pose = root_pose[:, None, :, :]
         link_pose = root_pose @ local_body_pose
-        # link_pose = local_body_pose
-        if 'parent_ids' in d:
-            parents = to_np(d['parent_ids'])[:link_pose.shape[1]]
+
+        parents = to_np(d.get("parent_ids"))
+        if parents is None:
+            parents = np.ones(link_pose.shape[1], dtype=int) * -1
         else:
-            parents = np.ones(link_pose.shape[1]) * -1
-        if 'matching_ids' in d:
-            sel = to_np(d['matching_ids'])
-        else:
-            sel = np.arange(link_pose.shape[1])
-        fps = d.get('fps', 30)
+            parents = np.asarray(parents)[:link_pose.shape[1]]
+        sel = to_np(d.get("matching_ids"))
+        if sel is None:
+            sel = np.arange(link_pose.shape[1], dtype=int)
+        fps = int(d.get("fps", 30))
         return dict(link_pose=link_pose, parents=parents, sel_ids=sel, fps=fps)
 
-    H = prep(human_data)
-    R = prep(robot_data)
+    def prep_robot(d):
+        if d is None:
+            return None
+        root_pos = to_np(d.get("root_pos"))
+        root_rot = to_np(d.get("root_rot"))
+        local_body_pos = to_np(d.get("local_body_pos"))
 
-    frames = 0
-    fps = 30
-    if H and R:
-        frames = min(len(H['link_pose']), len(R['link_pose']))
-        fps = min(H['fps'], R['fps'])
+        if root_pos is None or root_rot is None or local_body_pos is None:
+            raise ValueError("robot_data must contain root_pos, root_rot, local_body_pos")
+
+        T = root_pos.shape[0]
+        root_T = quat_wxyz_to_mat4(root_rot)
+        root_T[:, :3, 3] = root_pos
+
+        if local_body_pos.ndim == 2:
+            J = local_body_pos.shape[0]
+            local_T = np.repeat(make_homogeneous_translations(local_body_pos)[None, ...], T, axis=0)
+        else:
+            local_T = make_homogeneous_translations(local_body_pos)
+
+        link_pose = root_T[:, None, :, :] @ local_T
+
+        parents = to_np(d.get("parent_ids"))
+        if parents is None:
+            parents = np.ones(link_pose.shape[1], dtype=int) * -1
+        sel = to_np(d.get("matching_ids"))
+        if sel is None:
+            sel = np.arange(link_pose.shape[1], dtype=int)
+        fps = int(d.get("fps", 30))
+        return dict(link_pose=link_pose, parents=parents, sel_ids=sel, fps=fps)
+
+    # --- Prepare both
+    H = prep_human(human_data) if human_data is not None else None
+    Rb = prep_robot(robot_data) if robot_data is not None else None
+
+    # --- Determine frames and fps
+    if H and Rb:
+        frames = min(len(H["link_pose"]), len(Rb["link_pose"]))
+        fps = min(H["fps"], Rb["fps"])
     elif H:
-        frames = len(H['link_pose']); fps = H['fps']
+        frames, fps = len(H["link_pose"]), H["fps"]
     else:
-        frames = len(R['link_pose']); fps = R['fps']
+        frames, fps = len(Rb["link_pose"]), Rb["fps"]
 
-    # 计算显示范围
+    # --- Compute bounds
     pts_all = []
-    if H: pts_all.append(H['link_pose'].reshape(-1, 4, 4))
-    if R: pts_all.append(R['link_pose'].reshape(-1, 4, 4))
-    all_pts = np.concatenate(pts_all, axis=0)[:, :3, 3]
+    if H: pts_all.append(H["link_pose"].reshape(-1, 4, 4)[:, :3, 3])
+    if Rb: pts_all.append(Rb["link_pose"].reshape(-1, 4, 4)[:, :3, 3])
+    all_pts = np.concatenate(pts_all, axis=0)
     center = all_pts.mean(0)
     span = (all_pts.max(0) - all_pts.min(0)).max()
     if span == 0: span = 1.0
@@ -130,74 +206,73 @@ def show_motions(human_data, robot_data=None):
     lim_min = center - half
     lim_max = center + half
 
+    # --- Plot setup
     fig = plt.figure(figsize=(8, 7))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
     ax.set_xlim(lim_min[0], lim_max[0])
     ax.set_ylim(lim_min[1], lim_max[1])
     ax.set_zlim(lim_min[2], lim_max[2])
     ax.set_title("Overlay Human & Robot")
 
-    # 初始化 human
+    # --- Human init
     if H:
-        H_sel0 = H['link_pose'][0, :, :3, 3]
-        human_scat = ax.scatter(H_sel0[:, 0], H_sel0[:, 1], H_sel0[:, 2],
-                                c='#ff3030', s=40, label='Human Joints')
+        H_sel0 = H["link_pose"][0, H["sel_ids"], :3, 3]
+        human_scat = ax.scatter(H_sel0[:,0], H_sel0[:,1], H_sel0[:,2],
+                                c="#ff3030", s=40, label="Human")
         human_lines = []
-        for i, p in enumerate(H['parents']):
+        for i, p in enumerate(H["parents"]):
             if p != -1:
-                l, = ax.plot([], [], [], color='#0055ff', lw=2)
-                human_lines.append((i, p, l))
+                l, = ax.plot([], [], [], color="#0055ff", lw=2)
+                human_lines.append((i, int(p), l))
     else:
-        human_scat = None; human_lines = []
+        human_scat, human_lines = None, []
 
-    # 初始化 robot
-    if R:
-        R_sel0 = R['link_pose'][0, R['sel_ids'], :3, 3]
+    # --- Robot init
+    if Rb:
+        R_sel0 = Rb["link_pose"][0, Rb["sel_ids"], :3, 3]
         robot_scat = ax.scatter(R_sel0[:,0], R_sel0[:,1], R_sel0[:,2],
-                                c='#00c070', s=40, label='Robot Joints')
+                                c="#00c070", s=40, label="Robot")
         robot_lines = []
-        for i, p in enumerate(R['parents']):
+        for i, p in enumerate(Rb["parents"]):
             if p != -1:
-                l, = ax.plot([], [], [], color='#ff9900', lw=2)
-                robot_lines.append((i, p, l))
+                l, = ax.plot([], [], [], color="#ff9900", lw=2)
+                robot_lines.append((i, int(p), l))
     else:
-        robot_scat = None; robot_lines = []
+        robot_scat, robot_lines = None, []
 
-    if H or R:
-        ax.legend(loc='upper right', fontsize=9)
+    if H or Rb:
+        ax.legend(loc="upper right", fontsize=9)
+    time_text = fig.text(0.02, 0.95, "", fontsize=9)
 
-    time_text = fig.text(0.02, 0.95, '', fontsize=9)
-
+    # --- Update function
     def update(f):
         t = f / fps
-        time_text.set_text(f'Frame {f}/{frames-1}  Time {t:.2f}s')
+        time_text.set_text(f"Frame {f}/{frames-1}  Time {t:.2f}s")
 
         if H:
-            sel = H['link_pose'][f, H['sel_ids'], :3, 3]
-            human_scat._offsets3d = (sel[:, 0], sel[:, 1], sel[:, 2])
+            sel = H["link_pose"][f, H["sel_ids"], :3, 3]
+            human_scat._offsets3d = (sel[:,0], sel[:,1], sel[:,2])
             for i, p, l in human_lines:
-                a = H['link_pose'][f, p, :3, 3]; b = H['link_pose'][f, i, :3, 3]
+                a = H["link_pose"][f, p, :3, 3]; b = H["link_pose"][f, i, :3, 3]
                 l.set_data([a[0], b[0]], [a[1], b[1]])
                 l.set_3d_properties([a[2], b[2]])
 
-        if R:
-            sel = R['link_pose'][f, R['sel_ids'], :3, 3]
-            robot_scat._offsets3d = (sel[:, 0], sel[:, 1], sel[:, 2])
+        if Rb:
+            sel = Rb["link_pose"][f, Rb["sel_ids"], :3, 3]
+            robot_scat._offsets3d = (sel[:,0], sel[:,1], sel[:,2])
             for i, p, l in robot_lines:
-                a = R['link_pose'][f, p, :3, 3]; b = R['link_pose'][f, i, :3, 3]
+                a = Rb["link_pose"][f, p, :3, 3]; b = Rb["link_pose"][f, i, :3, 3]
                 l.set_data([a[0], b[0]], [a[1], b[1]])
                 l.set_3d_properties([a[2], b[2]])
         return []
 
-    # update(0)
-
     ani = FuncAnimation(fig, update, frames=frames, interval=1000/fps, blit=False)
-    plt.tight_layout()
-    plt.show()
-    # save
-    # ani.save('animation.mp4', writer='ffmpeg', fps=60)
+    ani.save('animation.mp4', writer='ffmpeg', fps=fps, dpi=300)
+    # plt.tight_layout()
+    # plt.show()
     return ani
+
 
 def show_frame(human_transformations, robot_transformations, ax=None, title="Human vs Robot Points"):
     """

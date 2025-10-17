@@ -11,9 +11,7 @@ from utils.mujoco_util import MujocoModel
 def vis_motion(config, data_path):
     # Load the SMPLX model and rotate it to the desired orientation xforward-zup
     data = joblib.load(data_path)
-    human_motion_data = data['motion_data']
-    robot_motion_data = data['robot_data']
-    helper.show_motions(human_motion_data, robot_motion_data)
+    helper.show_motions(robot_data=data)
 
     # helper.show_motions(motion_data)
 
