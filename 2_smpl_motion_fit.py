@@ -19,6 +19,9 @@ def smpl_motion_fit(config_path: str, data_path: str, smpl_model, mj_model):
 
     smpl_local_body_pose_batch = mocap_data['local_body_pose'][:, mocap_data['matching_ids']]  # [N, L, 4, 4]
     batch_size = smpl_local_body_pose_batch.shape[0]
+    if batch_size < 3:
+        tqdm.write(f"Not enough frames ({batch_size}) for motion fitting, skipping file.")
+        return None
 
     # Motion fitting
     batch_joints = torch.zeros((batch_size, len(mj_model.joint_names)), dtype=torch.float32, device=smpl_model.device)
@@ -42,8 +45,6 @@ def smpl_motion_fit(config_path: str, data_path: str, smpl_model, mj_model):
         mj_link_pose_batch = mj_model.fk_batch(batch_joints)
         # Compute loss
         loss_pos = torch.norm((mj_link_pose_batch[:, mj_model.selected_link_ids, :3, 3] - smpl_local_body_pose_batch[..., :3, 3]), dim=-1).mean()
-        # loss_smooth = torch.mean((batch_joints)**2)
-        # loss_smooth = torch.mean((batch_joints[1:] - batch_joints[:-1])**2)
         loss_smooth = torch.mean((batch_joints[2:] - 2*batch_joints[1:-1] + batch_joints[:-2])**2)
         total_loss = beta * loss_pos + (1-beta) * loss_smooth
         optimizer.zero_grad()
@@ -112,6 +113,8 @@ def smpl_motion_fit_from_directory(config_path: str, data_dir: str):
     print(f"Found {len(mocap_files)} mocap files in {str(data_dir)}")
     for mocap_file in tqdm(mocap_files, desc="Processing mocap files"):
         results = smpl_motion_fit(config_path=config_path, data_path=str(mocap_file), smpl_model=smpl_model, mj_model=mj_model)
+        if results is None:
+            continue
         save_path = Path('retargeted_data').joinpath(*mocap_file.with_suffix('.pkl').parts[1:])
         save_path.parent.mkdir(parents=True, exist_ok=True)
         tqdm.write(f'Saving retargeted mocap data to {str(save_path)}')
