@@ -11,24 +11,17 @@ from pathlib import Path
 from collections import deque
 from scipy.spatial.transform import Rotation as R
 
-def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
-    device = torch.device(device)
-    # Load the SMPLX model and rotate it to the desired orientation xforward-zup
-    print("Loading SMPLX model...")
-    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device)
-    print("Loading Mujoco model...")
-    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), device=device)
-
+def smpl_motion_fit(config_path: str, data_path: str, smpl_model, mj_model):
     # Load motion capture data
     print("Loading motion capture data...")
-    mocap_data = smpl_model.load_motion_data(data_path, shape_file_path=config.motion_retargeting.shape_file, fps=config.motion_retargeting.fps, device=device)
+    mocap_data = smpl_model.load_motion_data(data_path)
     # helper.show_motions(human_data=mocap_data)
 
     smpl_local_body_pose_batch = mocap_data['local_body_pose'][:, mocap_data['matching_ids']]  # [N, L, 4, 4]
     batch_size = smpl_local_body_pose_batch.shape[0]
 
     # Motion fitting
-    batch_joints = torch.zeros((batch_size, len(mj_model.joint_names)), dtype=torch.float32, device=device)
+    batch_joints = torch.zeros((batch_size, len(mj_model.joint_names)), dtype=torch.float32, device=smpl_model.device)
     batch_joints = torch.nn.Parameter(batch_joints)
     optimizer = torch.optim.AdamW([batch_joints], lr=0.008)
 
@@ -36,7 +29,7 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     best_batch_joints = None
     best_batch_link_pose = None
 
-    joint_limits = torch.tensor(mj_model.joint_limits, dtype=torch.float32, device=device)
+    joint_limits = torch.tensor(mj_model.joint_limits, dtype=torch.float32, device=mj_model.device)
     beta = 0.8
     loss_history = deque(maxlen=10)
 
@@ -77,11 +70,7 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
     global_pose = torch.matmul(root_pose, best_batch_link_pose)
     z_offset = torch.min(global_pose[..., 2, 3], dim=1, keepdim=True)
     root_pose[..., 2, 3] -= z_offset.values
-    # Save the best qpos_batch
-    save_path = Path('retargeted_data') / Path(data_path).with_suffix('.pkl').name
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    tqdm.write(f'Saving retargeted mocap data to {str(save_path)}')
-    joblib.dump({
+    results = {
         'fps': mocap_data['fps'],
         'root_pos': root_pose.squeeze().cpu().numpy()[..., :3, 3],
         'root_rot': R.from_matrix(root_pose.squeeze()[..., :3, :3].cpu().numpy()).as_quat(),
@@ -89,12 +78,51 @@ def smpl_motion_fit(config: OmegaConf, data_path: str, device='cpu'):
         'dof_pos': best_batch_joints.cpu().numpy(),
         'link_body_list': mj_model.link_names,
         'dof_list': mj_model.joint_names,
-    }, str(save_path))
+    }
+    return results
+
+def smpl_motion_fit_from_file(config_path: str, data_file: str):
+    config = OmegaConf.load(config_path)
+    device = torch.device(config.device)
+    # Load the SMPLX model and rotate it to the desired orientation xforward-zup
+    print("Loading SMPLX model...")
+    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device, shape_file=config.motion_retargeting.shape_file, retarget_fps=config.motion_retargeting.fps)
+    print("Loading Mujoco model...")
+    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), device=device)
+    smpl_motion_fit(config_path=config_path, data_path=data_file, smpl_model=smpl_model, mj_model=mj_model)
+
+
+def smpl_motion_fit_from_directory(config_path: str, data_dir: str):
+    config = OmegaConf.load(config_path)
+    device = torch.device(config.device)
+    # Load the SMPLX model and rotate it to the desired orientation xforward-zup
+    print("Loading SMPLX model...")
+    smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device, shape_file=config.motion_retargeting.shape_file, retarget_fps=config.motion_retargeting.fps)
+    print("Loading Mujoco model...")
+    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), device=device)
+
+    data_dir = Path(data_dir)
+    mocap_files = []
+    for mocap_file in data_dir.rglob('*stageii.npz'):
+        save_path = Path('retargeted_data').joinpath(*mocap_file.with_suffix('.pkl').parts[1:])
+        if save_path.exists():
+            print(f'Already retargeted, Skipping existing file: {str(save_path)}')
+            continue
+        mocap_files.append(mocap_file)
+    print(f"Found {len(mocap_files)} mocap files in {str(data_dir)}")
+    for mocap_file in tqdm(mocap_files, desc="Processing mocap files"):
+        results = smpl_motion_fit(config_path=config_path, data_path=str(mocap_file), smpl_model=smpl_model, mj_model=mj_model)
+        save_path = Path('retargeted_data').joinpath(*mocap_file.with_suffix('.pkl').parts[1:])
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        tqdm.write(f'Saving retargeted mocap data to {str(save_path)}')
+        joblib.dump(results, str(save_path))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=str, help="Path to the config file")
     parser.add_argument("--data", required=True, type=str, help="Path to the human data file")
     args = parser.parse_args()
-    config = OmegaConf.load(args.config)
-    smpl_motion_fit(config, data_path=args.data, device=config.device)
+    if Path(args.data).is_dir():
+        smpl_motion_fit_from_directory(args.config, args.data)
+    else:
+        smpl_motion_fit(args.config, args.data)

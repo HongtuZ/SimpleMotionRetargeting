@@ -7,6 +7,7 @@ from scipy.spatial.transform import Rotation as R
 
 class MujocoModel:
     def __init__(self, xml_file: str, root: str, selected_link_names = None, T_pose_joints = None, device='cpu'):
+        self.device = device
         self.root = root
         self.model = mujoco.MjModel.from_xml_path(xml_file)
         self.data = mujoco.MjData(self.model)

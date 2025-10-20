@@ -38,7 +38,6 @@ def interpolate_mocap_se3(
     注意：不直接调用 pytorch3d.transforms.se3_log_map（它要求平移为0），
     而是用 so3_log_map + 线性方程 V v = t_rel 求 v。
     """
-    print(f"Interpolating motion from {src_fps} fps to {target_fps} fps...")
     assert data.ndim == 4 and data.shape[-2:] == (4, 4), "data 形状应为 (T, J, 4, 4)"
     T, J = data.shape[:2]
     if T < 2 or target_fps <= 0:
@@ -115,5 +114,5 @@ def interpolate_mocap_se3(
     # 左乘回到绝对位姿
     T_interp = T0 @ T_inc
     T_interp[..., 3, :] = torch.tensor([0,0,0,1], dtype=dtype, device=device)
-    print(f"  Interpolated to {T_tgt} frames, duration {duration:.2f} s.")
+    print(f"Interpolated from {src_fps} fps {T} frames to {target_fps} fps {T_tgt} frames, data duration {duration:.2f} s.")
     return T_interp

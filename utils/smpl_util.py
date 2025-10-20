@@ -11,7 +11,7 @@ from utils import pytorch_util as ptu
 from pathlib import Path
 
 class SmplModel:
-    def __init__(self, model_path, model_type, gender='neutral', ext='npz', selected_link_names=None, device='cpu'):
+    def __init__(self, model_path, model_type, gender='neutral', ext='npz', selected_link_names=None, device='cpu', shape_file=None, retarget_fps=None):
         if not Path(model_path).exists():
             raise FileNotFoundError(f"Model path {model_path} does not exist. Please modify the path in config file.")
         self.model_path = model_path
@@ -45,6 +45,20 @@ class SmplModel:
         self.base_rot_transform = torch.eye(4).float().to(self.device).unsqueeze(0).unsqueeze(0)  # (1,1,4,4)
         self.base_rot_transform[..., :3, :3] = torch.from_numpy(R.from_euler('xyz', [np.pi/2, 0, np.pi/2], degrees=False).as_matrix()).float().to(self.device)
 
+        # Load shape data for mocap retargeting if provided
+        if shape_file and Path(shape_file).exists():
+            shape_data = joblib.load(str(shape_file))
+            self.betas = torch.from_numpy(shape_data['betas']).float().to(device)
+            self.scale = torch.from_numpy(shape_data['scale']).float().to(device)
+            self.smpl2robot_rot_mat = torch.from_numpy(shape_data['smpl2robot_rot_mat']).float().to(device)
+        else:
+            self.betas = None
+            self.scale = None
+            self.smpl2robot_rot_mat = None
+        self.fps = retarget_fps
+
+
+
     @property
     def num_betas(self):
         return self.body_model.num_betas
@@ -72,44 +86,45 @@ class SmplModel:
     def selected_link_pose(self, **kwargs):
         return self.link_pose(**kwargs)[:, self.selected_link_ids]
 
-    def load_motion_data(self, data_path, shape_file_path=None, fps=None, device='cpu'):
+    def load_motion_data(self, data_path):
         # 1. Load SMPL-X data
         smplx_data = np.load(data_path, allow_pickle=True)
-        poses = torch.from_numpy(smplx_data['poses']).float().to(device)   # [N, 165]
-        betas = torch.from_numpy(smplx_data['betas']).float().to(device).reshape(1, -1)
-        trans = torch.from_numpy(smplx_data['trans']).float().to(device)   # [N, 3]
+        poses = torch.from_numpy(smplx_data['poses']).float().to(self.device)   # [N, 165]
+        trans = torch.from_numpy(smplx_data['trans']).float().to(self.device)   # [N, 3]
         num_frames = poses.shape[0]
-        scale = torch.ones((1,), dtype=torch.float32, device=device)
-        smpl2robot_rot_mat = torch.eye(3).unsqueeze(0).to(device).repeat(len(self.link_names), 1, 1).unsqueeze(0)  # [1, L, 4, 4]
+        betas = self.betas if self.betas is not None else torch.from_numpy(smplx_data['betas']).float().to(self.device).reshape(1, -1)
+        scale = self.scale if self.scale is not None else torch.ones((1,), dtype=torch.float32, device=self.device)
+        smpl2robot_rot_mat = self.smpl2robot_rot_mat if self.smpl2robot_rot_mat is not None else torch.eye(3).unsqueeze(0).to(self.device).repeat(len(self.link_names), 1, 1).unsqueeze(0)  # [1, L, 4, 4]
 
-        # 2. Load shape data
-        if shape_file_path and Path(shape_file_path).exists():
-            shape_data = joblib.load(str(shape_file_path))
-            betas = torch.from_numpy(shape_data['betas']).float().to(device)
-            scale = torch.from_numpy(shape_data['scale']).float().to(device)
-            smpl2robot_rot_mat = torch.from_numpy(shape_data['smpl2robot_rot_mat']).float().to(device)
-
-
-        # 3. Forward pass
+        # 2. Forward pass
         with torch.no_grad():
-            res = self.body_model(
-                betas=betas,
-                global_orient= poses[:, :3],
-                transl=trans,
-                body_pose=poses[:, 3:66],
-                left_hand_pose=poses[:, 66:111],
-                right_hand_pose=poses[:, 111:156],
-                jaw_pose=torch.zeros((num_frames, 3), dtype=torch.float32, device=device),
-                leye_pose=torch.zeros((num_frames, 3), dtype=torch.float32, device=device),
-                reye_pose=torch.zeros((num_frames, 3), dtype=torch.float32, device=device),
-                expression=torch.zeros((num_frames, 10), dtype=torch.float32, device=device),
-                return_full_pose=True,
-            )
+            chunk_size = 2048
+            res = {'full_pose': [], 'joints': []}
+            for start in range(0, num_frames, chunk_size):
+                end = min(start + chunk_size, num_frames)
+                chunk_frames = end - start
+                chunk_res = self.body_model(
+                    betas=betas,
+                    global_orient= poses[start:end, :3],
+                    transl=trans[start:end],
+                    body_pose=poses[start:end, 3:66],
+                    left_hand_pose=poses[start:end, 66:111],
+                    right_hand_pose=poses[start:end, 111:156],
+                    jaw_pose=torch.zeros((chunk_frames, 3), dtype=torch.float32, device=self.device),
+                    leye_pose=torch.zeros((chunk_frames, 3), dtype=torch.float32, device=self.device),
+                    reye_pose=torch.zeros((chunk_frames, 3), dtype=torch.float32, device=self.device),
+                    expression=torch.zeros((chunk_frames, 10), dtype=torch.float32, device=self.device),
+                    return_full_pose=True,
+                )
+                res['full_pose'].append(chunk_res['full_pose'])
+                res['joints'].append(chunk_res['joints'])
+            for key in res.keys():
+                res[key] = torch.cat(res[key], dim=0)
 
-        full_pose = res.full_pose.reshape(num_frames, -1, 3)[:, :len(self.link_names)]
+        full_pose = res['full_pose'].reshape(num_frames, -1, 3)[:, :len(self.link_names)]
         rot_mats = axis_angle_to_matrix(full_pose)
-        root_pos = res.joints[:, :1]
-        pos_xyz = (res.joints[:, :len(self.link_names)] - root_pos) * scale + root_pos
+        root_pos = res['joints'][:, :1]
+        pos_xyz = (res['joints'][:, :len(self.link_names)] - root_pos) * scale + root_pos
         parents = self.body_model.parents
         tgt_rot_mats = torch.zeros_like(rot_mats)
         for i in range(len(parents)):
@@ -118,7 +133,7 @@ class SmplModel:
                 continue
             tgt_rot_mats[:, i] = tgt_rot_mats[:, parents[i]] @ rot_mats[:, i]
 
-        transformation_matrices = torch.zeros((num_frames, len(self.link_names), 4, 4), dtype=torch.float32, device=pos_xyz.device)
+        transformation_matrices = torch.zeros((num_frames, len(self.link_names), 4, 4), dtype=torch.float32, device=self.device)
         transformation_matrices[..., :3, :3] = tgt_rot_mats @ self.link_rot_mats
         transformation_matrices[..., :3, 3] = pos_xyz
         transformation_matrices[..., 3, 3] = 1.0
@@ -135,6 +150,7 @@ class SmplModel:
                 break
         if data_fps < 0:
             raise ValueError(f"Frame rate information not found in the SMPL-X data: {data_path}, available keys: {list(smplx_data.keys())}")
+        fps = self.fps
         if fps is not None and fps < data_fps:
             transformation_matrices = ptu.interpolate_mocap_se3(
                 transformation_matrices, data_fps, fps
