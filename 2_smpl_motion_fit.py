@@ -15,6 +15,8 @@ def smpl_motion_fit(config_path: str, data_path: str, smpl_model, mj_model):
     # Load motion capture data
     print("Loading motion capture data...")
     mocap_data = smpl_model.load_motion_data(data_path)
+    if mocap_data is None:
+        return None
     # helper.show_motions(human_data=mocap_data)
 
     smpl_local_body_pose_batch = mocap_data['local_body_pose'][:, mocap_data['matching_ids']]  # [N, L, 4, 4]
@@ -71,15 +73,18 @@ def smpl_motion_fit(config_path: str, data_path: str, smpl_model, mj_model):
     global_pose = torch.matmul(root_pose, best_batch_link_pose)
     z_offset = torch.min(global_pose[..., 2, 3], dim=1, keepdim=True)
     root_pose[..., 2, 3] -= z_offset.values
-    results = {
-        'fps': mocap_data['fps'],
-        'root_pos': root_pose.squeeze().cpu().numpy()[..., :3, 3],
-        'root_rot': R.from_matrix(root_pose.squeeze()[..., :3, :3].cpu().numpy()).as_quat(),
-        'local_body_pos': best_batch_link_pose.squeeze().cpu().numpy()[..., :3, 3],
-        'dof_pos': best_batch_joints.cpu().numpy(),
-        'link_body_list': mj_model.link_names,
-        'dof_list': mj_model.joint_names,
-    }
+    try:
+        results = {
+            'fps': mocap_data['fps'],
+            'root_pos': root_pose.squeeze().cpu().numpy()[..., :3, 3],
+            'root_rot': R.from_matrix(root_pose.squeeze()[..., :3, :3].cpu().numpy()).as_quat(),
+            'local_body_pos': best_batch_link_pose.squeeze().cpu().numpy()[..., :3, 3],
+            'dof_pos': best_batch_joints.cpu().numpy(),
+            'link_body_list': mj_model.link_names,
+            'dof_list': mj_model.joint_names,
+        }
+    except:
+        return None
     return results
 
 def smpl_motion_fit_from_file(config_path: str, data_file: str):

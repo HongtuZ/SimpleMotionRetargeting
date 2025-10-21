@@ -88,7 +88,11 @@ class SmplModel:
 
     def load_motion_data(self, data_path):
         # 1. Load SMPL-X data
-        smplx_data = np.load(data_path, allow_pickle=True)
+        try:
+            smplx_data = np.load(data_path, allow_pickle=True)
+        except:
+            print(f"Failed to load SMPL-X data from {data_path}")
+            return None
         poses = torch.from_numpy(smplx_data['poses']).float().to(self.device)   # [N, 165]
         trans = torch.from_numpy(smplx_data['trans']).float().to(self.device)   # [N, 3]
         num_frames = poses.shape[0]
