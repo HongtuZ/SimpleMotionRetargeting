@@ -1,0 +1,40 @@
+device: cuda # cpu, cuda for nvidia, mps for macos
+smpl:
+  model_path: assets/body_models
+  model_type: smplx # smpl smplh smplx
+  ext: npz # pkl or npz
+  gender: neutral # male, female, neutral
+
+mujoco:
+  xml_path: assets/ths_t1/urdf/ths_t1.xml
+  root: base_link
+  T_pose_joints:
+
+
+motion_retargeting:
+  shape_file: best_shape/ths_t1_shape.pkl
+  fps: 50
+
+smpl_robot_mapping:
+  pelvis: ${mujoco.root}
+  left_hip: left_leg_pitch_link
+  right_hip: right_leg_pitch_link
+  spine1: body_m1_link
+  left_knee: left_leg_knee_link
+  right_knee: right_leg_knee_link
+  # spine2: 
+  left_ankle: left_leg_ankle_link
+  right_ankle: right_leg_ankle_link
+  # spine3: 
+  # left_foot: 
+  # right_foot: 
+  # neck: 
+  # left_collar: 
+  # right_collar: 
+  # head: head_link3
+  left_shoulder: left_arm_m1_link
+  right_shoulder: right_arm_m1_link
+  left_elbow: left_arm_m4_link
+  right_elbow: right_arm_m4_link
+  left_wrist: left_arm_m6_link
+  right_wrist: right_arm_m6_link

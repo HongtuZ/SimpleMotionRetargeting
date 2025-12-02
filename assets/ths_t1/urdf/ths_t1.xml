@@ -1,0 +1,374 @@
+<mujoco model="ths_t3_tpos_urdf">
+
+
+    <!-- 编译器配置  角度单位：弧    网格文件搜索路径      -->
+    <compiler angle="radian"     meshdir="../meshes/"  />
+    <!-- 仿真资源容量配置 最大关节数限制 最大接触对数限制-->
+    <size njmax="500" nconmax="100" />
+
+
+    <!-- 全局仿真参数配置 仿真时间步长        每个步内执行的迭代次数  约束求解算法    重力加速度-->
+    <option            timestep='0.001'  iterations='50'      solver='PGS'  gravity='0 0 -9.81'>
+    <!-- 功能开关标志 启用接触检测       启用能量守恒计算   启用重力模拟-->
+    <flag           contact="enable" energy="enable" gravity="enable"/>
+
+    </option>
+
+
+    <!-- 视觉效果全局配置 -->
+    <visual>
+        <quality shadowsize='4096'/>  <!-- 阴影质量设置 阴影贴图分辨率（4096x4096像素） -->
+        <map znear='0.05'/>           <!-- 摄像机渲染范围 近裁剪平面距离 -->
+    </visual>
+
+
+    <asset>
+
+        <!--    纹理类型：天空盒  使用内置渐变生成器    纹理宽度     纹理高度       渐变起始颜色（蓝灰色） 渐变结束颜色（纯黑）  -->
+        <texture type='skybox' builtin='gradient' width='128' height='128' rgb1='0.4 0.6 0.8' rgb2='0.4 0.6 0.8'/>
+        <!--     2D平面纹理 棋盘格纹理名称  内置棋盘格图案      叠加十字标记   棋盘格浅色块颜色 深蓝灰  棋盘格深色块颜色 炭灰色  十字标记标记颜色          纹理（宽）   纹理（高） -->
+        <texture type="2d" name="plane" builtin="checker" mark="cross" rgb1="0.2 0.3 0.4"   rgb2="0.1 0.15 0.2"   markrgb="0.8 0.8 0.8"  width="512" height="512" />
+        <!--     材质名称       反射率0无反射        关联的2D纹理名称  纹理平铺次数（X/Y轴各1次  禁用UV坐标缩放（保持纹理比例）  -->
+        <material name='plane' reflectance='0.' texture='plane' texrepeat='1 1'        texuniform='true'/>
+        <!-- 碰撞体材质名称           RGBA颜色 -->
+        <material name='collision' rgba='0.1 0.5 0.9 0'/> <!--collision rgba 无颜色-->
+
+
+        <mesh name="base_link" file="base_link.STL" />
+        <mesh name="left_leg_pitch_link" file="left_leg_pitch_link.STL" />
+        <mesh name="left_leg_roll_link" file="left_leg_roll_link.STL" />
+        <mesh name="left_leg_yaw_link" file="left_leg_yaw_link.STL" />
+        <mesh name="left_leg_knee_link" file="left_leg_knee_link.STL" />
+        <mesh name="left_leg_ankle_link" file="left_leg_ankle_link.STL" />
+        <mesh name="right_leg_pitch_link" file="right_leg_pitch_link.STL" />
+        <mesh name="right_leg_roll_link" file="right_leg_roll_link.STL" />
+        <mesh name="right_leg_yaw_link" file="right_leg_yaw_link.STL" />
+        <mesh name="right_leg_knee_link" file="right_leg_knee_link.STL" />
+        <mesh name="right_leg_ankle_link" file="right_leg_ankle_link.STL" />
+        <mesh name="body_m1_link" file="body_m1_link.STL" />
+        <mesh name="head_pitch_link" file="head_pitch_link.STL" />
+        <mesh name="head_yaw_link" file="head_yaw_link.STL" />
+        <mesh name="left_arm_m1_link" file="left_arm_m1_link.STL" />
+        <mesh name="left_arm_m2_link" file="left_arm_m2_link.STL" />
+        <mesh name="left_arm_m3_link" file="left_arm_m3_link.STL" />
+        <mesh name="left_arm_m4_link" file="left_arm_m4_link.STL" />
+        <mesh name="left_arm_m5_link" file="left_arm_m5_link.STL" />
+        <mesh name="left_arm_m6_link" file="left_arm_m6_link.STL" />
+        <mesh name="right_arm_m1_link" file="right_arm_m1_link.STL" />
+        <mesh name="right_arm_m2_link" file="right_arm_m2_link.STL" />
+        <mesh name="right_arm_m3_link" file="right_arm_m3_link.STL" />
+        <mesh name="right_arm_m4_link" file="right_arm_m4_link.STL" />
+        <mesh name="right_arm_m5_link" file="right_arm_m5_link.STL" />
+        <mesh name="right_arm_m6_link" file="right_arm_m6_link.STL" />
+    </asset>
+
+
+
+    <!-- 世界环境容器 -->
+    <worldbody>
+
+        <!-- 地面几何体：全局位置       平面尺寸        无限平面      名为'plane'的材质  不参与碰撞检测 允许与所有类型物体碰撞 接触维度：支持3维 -->
+        <geom name='wp' pos='0 0 0' size='0 0 0.1' type='plane' material='plane' contype="0"  conaffinity="15" condim='3' />
+
+        <!--   光源模式：指向质心  光源位置     光源方向（向下照射） -->
+        <light  mode='trackcom' pos='0 0 5' dir='0 0 -1' />
+        <!--   环境光方向性光源        光源位置    光源方向下照射  漫反射颜色              镜面反射颜色（禁用高光） -->
+        <light directional='true' pos='0 0 10' dir='0 0 -1' diffuse='1. 1. 1.' specular='0. 0. 0.'  />
+    
+
+        <!-- 身体部件名称     位置（z=0.962米 -->
+        <body name="base_link" pos="0. 0. 0.82">
+            <!-- 惯性参数  质心局部坐标                          旋转四元数      质量（kg）         对角惯量矩阵 urdf里的 xx zz yy -->
+            <inertial     pos="-3.13E-05 2.63E-05 -0.0708901" quat="1 0 0 0" mass="2.2672752" diaginertia="00.0051098 0.0043318 0.0034943"/> 
+
+            <!-- IMU传感器安装点 -->
+            <site name="imu" pos="0 0 0"/>
+
+            <!--   关节名称          关节类型          不限制运动范围   -->
+            <joint name="base_link" type="free"     limited="false" />
+            <!-- 基础底座 使用网格模型渲染 参与碰撞检测   不与其他物体发生碰撞 分组标识    浅灰色                           引用名为'base_link'的网格模型-->
+            <geom        type="mesh"   contype="1"  conaffinity="0"   group="1" rgba="0.75294 0.75294 0.75294 1" mesh="base_link" />
+
+
+            <body name="left_leg_pitch_link" pos="0 0.058 -0.069">
+                <inertial pos="-0.0044205 0.0569084 0" quat="0.707074 0.707074 0.00683257 0.00683257" mass="1.06325" diaginertia="0.00137539 0.0010207 0.000878514" />
+                <joint name="left_leg_pitch_joint" pos="0 0 0" axis="0 -1 0" limited="true" range="-1 1.3" />
+                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_leg_pitch_link" />
+                <body name="left_leg_roll_link" pos="0.02225 0.062 0">
+                    <inertial pos="-0.0020336 4.4686e-08 -0.044812" quat="0.989609 0 0.143784 0" mass="0.25314" diaginertia="0.000501243 0.0004395 0.000143857" />
+                    <joint name="left_leg_roll_joint" pos="0 0 0" axis="-1 0 0" limited="true" range="-0.7 0.25" />
+                    <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_leg_roll_link" />
+                    <body name="left_leg_yaw_link" pos="-0.0195 0 -0.0965">
+                        <inertial pos="-3.7449e-06 -0.0017086 -0.10819" quat="0.699961 -0.00738001 0.00751444 0.714104" mass="2.31428" diaginertia="0.0208966 0.0206061 0.00224442" />
+                        <joint name="left_leg_yaw_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-1 1" />
+                        <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_leg_yaw_link" />
+                        <body name="left_leg_knee_link" pos="0 0.02225 -0.2085">
+                            <inertial pos="-0.0047016 -0.0168569 -0.155287" quat="0.596108 -0.0259215 0.0218646 0.802188" mass="1.03516" diaginertia="0.0114309 0.0112687 0.000694473" />
+                            <joint name="left_leg_knee_joint" pos="0 0 0" axis="0 -1 0" limited="true" range="-1.8 0.1" />
+                            <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_leg_knee_link" />
+                            <body name="left_leg_ankle_link" pos="0 -0.0205 -0.373">
+                                <inertial pos="0.0062835 -0.0009728 -0.0377861" quat="0.172212 0.698299 0.189189 0.668527" mass="0.337125" diaginertia="0.00117411 0.00114649 0.0002235" />
+                                <joint name="left_leg_ankle_joint" pos="0 0 0" axis="0 1 0" limited="true" range="-0.7 0.7" />
+                                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_leg_ankle_link" />
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="right_leg_pitch_link" pos="0 -0.058 -0.069">
+                <inertial pos="-0.0044205 -0.056908 0" quat="0.707074 0.707074 -0.00683257 -0.00683257" mass="1.0632" diaginertia="0.00137539 0.0010207 0.000878514" />
+                <joint name="right_leg_pitch_joint" pos="0 0 0" axis="0 1 0" limited="true" range="-1.3 1" />
+                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_leg_pitch_link" />
+                <body name="right_leg_roll_link" pos="0.02225 -0.062 0">
+                    <inertial pos="-0.0020336 4.4686e-08 -0.044812" quat="0.989609 0 0.143784 0" mass="0.25314" diaginertia="0.000501243 0.0004395 0.000143857" />
+                    <joint name="right_leg_roll_joint" pos="0 0 0" axis="-1 0 0" limited="true" range="-0.25 0.7" />
+                    <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_leg_roll_link" />
+                    <body name="right_leg_yaw_link" pos="-0.0195 0 -0.0965">
+                        <inertial pos="3.6e-06 0.0017086 -0.10819" quat="0.699961 0.00738001 -0.00751444 0.714104" mass="2.31428" diaginertia="0.0208966 0.0206061 0.00224442" />
+                        <joint name="right_leg_yaw_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-1 1" />
+                        <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_leg_yaw_link" />
+                        <body name="right_leg_knee_link" pos="0 -0.02225 -0.2085">
+                            <inertial pos="-0.0045301 0.016859 -0.15523" quat="0.797843 0.0210613 -0.02675 0.601903" mass="1.03516" diaginertia="0.0114167 0.0112643 0.000688817" />
+                            <joint name="right_leg_knee_joint" pos="0 0 0" axis="0 1 0" limited="true" range="-0.1 1.8" />
+                            <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_leg_knee_link" />
+                            <body name="right_leg_ankle_link" pos="0 0.0205 -0.373">
+                                <inertial pos="0.0062835 0.00097277 -0.037786" quat="-0.172212 0.698299 -0.189189 0.668527" mass="0.337125" diaginertia="0.00117411 0.00114649 0.0002235" />
+                                <joint name="right_leg_ankle_joint" pos="0 0 0" axis="0 -1 0" limited="true" range="-0.7 0.7" />
+                                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_leg_ankle_link" />
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="body_m1_link" pos="0 0 0.008">
+                <inertial pos="0.000410466 -5.80809e-05 0.198226" quat="0.999998 -0.000403366 0.00177747 0.000407225" mass="6.41349" diaginertia="0.108886 0.0948566 0.0227514" />
+                <joint name="body_m1_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-1 1" />
+                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="body_m1_link" />
+                <geom pos="0.00033642 0.00013649 0.38114" type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="head_pitch_link" />
+                <geom pos="0 -0.00035 0.414001" type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="head_yaw_link" />
+                <body name="left_arm_m1_link" pos="0 0.12 0.339">
+                    <inertial pos="-0.000298 0.0505051 2.46e-05" quat="0.50051 0.502457 -0.498219 0.498802" mass="0.404877" diaginertia="0.000268801 0.000235199 0.0001955" />
+                    <joint name="left_arm_m1_joint" pos="0 0 0" axis="0 -1 0" limited="true" range="-2 2" />
+                    <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_arm_m1_link" />
+                    <body name="left_arm_m2_link" pos="0.0265 0.056 0">
+                        <inertial pos="-0.0256626 0.0918703 0" quat="0.479676 0.514013 -0.48548 0.519625" mass="0.548507" diaginertia="0.000816016 0.000693672 0.000333412" />
+                        <joint name="left_arm_m2_joint" pos="0 0 0" axis="-1 0 0" limited="true" range="-2 2" />
+                        <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_arm_m2_link" />
+                        <body name="left_arm_m3_link" pos="-0.02615 0.121 0">
+                            <inertial pos="-2.46e-05 0.0505051 -0.000298" quat="0.707997 0.706208 0.00258445 -0.00162022" mass="0.404877" diaginertia="0.000268801 0.000235199 0.0001955" />
+                            <joint name="left_arm_m3_joint" pos="0 0 0" axis="0 -1 0" limited="true" range="-1.8 1.8" />
+                            <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_arm_m3_link" />
+                            <body name="left_arm_m4_link" pos="0 0.056 0.0265">
+                                <inertial pos="0 0.0918703 -0.0256626" quat="0.730893 0.682468 -0.00396857 0.00410469" mass="0.548507" diaginertia="0.000816016 0.000693672 0.000333412" />
+                                <joint name="left_arm_m4_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2 2" />
+                                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_arm_m4_link" />
+                                <body name="left_arm_m5_link" pos="0 0.135 -0.02615">
+                                    <inertial pos="-1.8053e-09 0.043849 1.8553e-06" quat="0.707107 0.707107 0 0" mass="0.0868808" diaginertia="0.0002916 0.0002889 2.94e-05" />
+                                    <joint name="left_arm_m5_joint" pos="0 0 0" axis="0 -1 0" limited="true" range="-1.8 1.8" />
+                                    <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="left_arm_m5_link" />
+                                    <body name="left_arm_m6_link" pos="0 0.13212 0">
+                                        <inertial pos="0.025571 -0.00011967 -1.0933e-09" mass="0.0012644" diaginertia="1e-05 1e-05 1e-05" />
+                                        <!-- <joint name="left_arm_m6_joint" pos="0 0 0" axis="-1 0 0" limited="true" range="-1 1" /> -->
+                                        <!-- <joint name="left_arm_m6_joint" type="fixed"/> -->
+                                        <geom type="mesh" rgba="0.65098 0.61961 0.58824 1" mesh="left_arm_m6_link" />
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+                <body name="right_arm_m1_link" pos="0 -0.12 0.339">
+                    <inertial pos="-0.000298 -0.0505051 -2.46e-05" quat="0.498802 0.498219 -0.502457 0.50051" mass="0.404877" diaginertia="0.000268801 0.000235199 0.0001955" />
+                    <joint name="right_arm_m1_joint" pos="0 0 0" axis="0 1 0" limited="true" range="-2 2" />
+                    <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_arm_m1_link" />
+                    <body name="right_arm_m2_link" pos="0.0265 -0.056 0">
+                        <inertial pos="-0.0256626 -0.0918703 0" quat="0.519625 0.48548 -0.514013 0.479676" mass="0.548507" diaginertia="0.000816016 0.000693672 0.000333412" />
+                        <joint name="right_arm_m2_joint" pos="0 0 0" axis="-1 0 0" limited="true" range="-2 2" />
+                        <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_arm_m2_link" />
+                        <body name="right_arm_m3_link" pos="-0.02615 -0.121 0">
+                            <inertial pos="2.46e-05 -0.0505051 -0.000298" quat="0.706208 0.707997 -0.00162022 0.00258445" mass="0.404877" diaginertia="0.000268801 0.000235199 0.0001955" />
+                            <joint name="right_arm_m3_joint" pos="0 0 0" axis="0 1 0" limited="true" range="-1.8 1.8" />
+                            <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_arm_m3_link" />
+                            <body name="right_arm_m4_link" pos="0 -0.056 0.0265">
+                                <inertial pos="0 -0.0918703 -0.0256626" quat="0.682468 0.730893 0.00410469 -0.00396857" mass="0.548507" diaginertia="0.000816016 0.000693672 0.000333412" />
+                                <joint name="right_arm_m4_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2 2" />
+                                <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_arm_m4_link" />
+                                <body name="right_arm_m5_link" pos="0 -0.135 -0.02615">
+                                    <inertial pos="0 -0.0438485 1.9e-06" quat="0.707107 0.707107 0 0" mass="0.0868808" diaginertia="0.0002916 0.0002889 2.94e-05" />
+                                    <joint name="right_arm_m5_joint" pos="0 0 0" axis="0 1 0" limited="true" range="-1.8 1.8" />
+                                    <geom type="mesh" rgba="0.75294 0.75294 0.75294 1" mesh="right_arm_m5_link" />
+                                    <body name="right_arm_m6_link" pos="0 -0.13212 0">
+                                        <inertial pos="0.0255706 0.0001197 0" mass="0.0012644" diaginertia="1e-05 1e-05 1e-05" />
+                                        <!-- <joint name="right_arm_m6_joint" pos="0 0 0" axis="-1 0 0" limited="true" range="-1 1" /> -->
+                                        <!-- <joint name="right_arm_m6_joint" type="fixed"/> -->
+                                        <geom type="mesh" rgba="0.65098 0.61961 0.58824 1" mesh="right_arm_m6_link" />
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+            
+    </worldbody>
+
+
+
+    <!-- 执行器配置（关节电机参数） -->
+    <actuator>
+        <!--   电机名称      关联的关节名称                   齿轮比 无减速 控制信号范围               启用控制信号限制-->
+        <!-- 左腿 -->
+        <motor name="llpj"  joint="left_leg_pitch_joint"   gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="llrj"  joint="left_leg_roll_joint"    gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <motor name="llyj"  joint="left_leg_yaw_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <motor name="llkj"  joint="left_leg_knee_joint"    gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <motor name="llaj"  joint="left_leg_ankle_joint"   gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <!-- 右腿 -->
+        <motor name="rlpj" joint="right_leg_pitch_joint"   gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="rlrj" joint="right_leg_roll_joint"    gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <motor name="rlyj" joint="right_leg_yaw_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <motor name="rlkj" joint="right_leg_knee_joint"    gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+        <motor name="rlaj" joint="right_leg_ankle_joint"   gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>
+
+        <!-- 腰部 -->
+        <motor name="bm1j"  joint="body_m1_joint"          gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+
+        <!-- 左手臂 -->
+        <motor name="la1j"  joint="left_arm_m1_joint"      gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="la2j"  joint="left_arm_m2_joint"      gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="la3j"  joint="left_arm_m3_joint"      gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="la4j"  joint="left_arm_m4_joint"      gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="la5j"  joint="left_arm_m5_joint"      gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <!-- <motor name="la6j"  joint="left_arm_m6_joint"      gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>  -->
+        <!-- 右手臂 -->
+        <motor name="ra1j"  joint="right_arm_m1_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="ra2j"  joint="right_arm_m2_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="ra3j"  joint="right_arm_m3_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="ra4j"  joint="right_arm_m4_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <motor name="ra5j"  joint="right_arm_m5_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/> 
+        <!-- <motor name="ra6j"  joint="right_arm_m6_joint"     gear="1.00" ctrlrange="-300.0 300.0" ctrllimited="true"/>  -->
+
+    </actuator>
+
+
+
+    <!-- 传感器配置 -->
+    <sensor>
+
+        <!--      位置传感器名称  关联的关节名称                   无测量噪声 --> 
+        <!-- 左腿 -->
+        <jointpos name="llpjp" joint="left_leg_pitch_joint"  noise="0.0"/> 
+        <jointpos name="llrjp" joint="left_leg_roll_joint"   noise="0.0"/>
+        <jointpos name="llyjp" joint="left_leg_yaw_joint"    noise="0.0"/>
+        <jointpos name="llkjp" joint="left_leg_knee_joint"   noise="0.0"/>
+        <jointpos name="llajp" joint="left_leg_ankle_joint"  noise="0.0"/>
+        <!-- 右腿 -->
+        <jointpos name="rlpjp" joint="right_leg_pitch_joint"  noise="0.0"/> 
+        <jointpos name="rlrjp" joint="right_leg_roll_joint"   noise="0.0"/>
+        <jointpos name="rlyjp" joint="right_leg_yaw_joint"    noise="0.0"/>
+        <jointpos name="rlkjp" joint="right_leg_knee_joint"   noise="0.0"/>
+        <jointpos name="rlajp" joint="right_leg_ankle_joint"  noise="0.0"/>
+
+        <!-- 腰部 -->
+        <jointpos name="bm1jp" joint="body_m1_joint"        noise="0.0"/>
+
+        <!-- 左手臂 -->
+        <jointpos name="la1jp" joint="left_arm_m1_joint"       noise="0.0"/>
+        <jointpos name="la2jp" joint="left_arm_m2_joint"       noise="0.0"/>
+        <jointpos name="la3jp" joint="left_arm_m3_joint"       noise="0.0"/>
+        <jointpos name="la4jp" joint="left_arm_m4_joint"       noise="0.0"/>
+        <jointpos name="la5jp" joint="left_arm_m5_joint"       noise="0.0"/>
+        <!-- <jointpos name="la6jp" joint="left_arm_m6_joint"       noise="0.0"/>   -->
+        <!-- 右手臂 --> 
+        <jointpos name="ra1jp" joint="right_arm_m1_joint"      noise="0.0"/>
+        <jointpos name="ra2jp" joint="right_arm_m2_joint"      noise="0.0"/>
+        <jointpos name="ra3jp" joint="right_arm_m3_joint"      noise="0.0"/>
+        <jointpos name="ra4jp" joint="right_arm_m4_joint"      noise="0.0"/>
+        <jointpos name="ra5jp" joint="right_arm_m5_joint"      noise="0.0"/>
+        <!-- <jointpos name="ra6jp" joint="right_arm_m6_joint"      noise="0.0"/> -->
+        
+  
+
+        <!--      速度传感器名称  关联的关节名称                   无测量噪声 -->
+        <!-- 左腿 -->
+        <jointvel name="llpjv" joint="left_leg_pitch_joint"   noise="0.0"/> 
+        <jointvel name="llrjv" joint="left_leg_roll_joint"    noise="0.0"/>
+        <jointvel name="llyjv" joint="left_leg_yaw_joint"     noise="0.0"/>
+        <jointvel name="llkjv"  joint="left_leg_knee_joint"   noise="0.0"/>
+        <jointvel name="llajv"  joint="left_leg_ankle_joint"  noise="0.0"/>
+        <!-- 右腿 -->
+        <jointvel name="rlpjv" joint="right_leg_pitch_joint"  noise="0.0"/> 
+        <jointvel name="rlrjv" joint="right_leg_roll_joint"   noise="0.0"/>
+        <jointvel name="rlyjv" joint="right_leg_yaw_joint"    noise="0.0"/>
+        <jointvel name="rlkjv" joint="right_leg_knee_joint"  noise="0.0"/>
+        <jointvel name="rlajv" joint="right_leg_ankle_joint" noise="0.0"/>
+
+        <!-- 腰部 -->
+        <jointvel name="bm1jv" joint="body_m1_joint"           noise="0.0"/>
+
+        <!-- 左手臂 -->
+        <jointvel name="la1jv" joint="left_arm_m1_joint"       noise="0.0"/>
+        <jointvel name="la2jv" joint="left_arm_m2_joint"       noise="0.0"/>
+        <jointvel name="la3jv" joint="left_arm_m3_joint"       noise="0.0"/>
+        <jointvel name="la4jv" joint="left_arm_m4_joint"       noise="0.0"/>
+        <jointvel name="la5jv" joint="left_arm_m5_joint"       noise="0.0"/>
+        <!-- <jointvel name="la6jv" joint="left_arm_m6_joint"       noise="0.0"/> -->
+        <!-- 右手臂 -->
+        <jointvel name="ra1jv" joint="right_arm_m1_joint"      noise="0.0"/>
+        <jointvel name="ra2jv" joint="right_arm_m2_joint"      noise="0.0"/>
+        <jointvel name="ra3jv" joint="right_arm_m3_joint"      noise="0.0"/> 
+        <jointvel name="ra4jv" joint="right_arm_m4_joint"      noise="0.0"/>
+        <jointvel name="ra5jv" joint="right_arm_m5_joint"      noise="0.0"/>  
+        <!-- <jointvel name="ra6jv" joint="right_arm_m6_joint"      noise="0.0"/>      -->
+
+
+
+        <!--    扭矩电流传感器名称    关联的执行器名称     测量噪声标准差 -->
+        <!-- 左腿 -->
+        <actuatorfrc name="llpji"   actuator="llpj"  noise="0.0"/> <!-- Leg Left -->
+        <actuatorfrc name="llrji"   actuator="llrj"  noise="0.0"/>
+        <actuatorfrc name="llyji"   actuator="llyj"  noise="0.0"/>
+        <actuatorfrc name="llkji"   actuator="llkj"  noise="0.0"/>
+        <actuatorfrc name="llaji"   actuator="llaj"  noise="0.0"/>
+        <!-- 右腿 -->
+        <actuatorfrc name="rlpji"  actuator="rlpj"   noise="0.0"/> <!-- Leg Right -->
+        <actuatorfrc name="rlrji"  actuator="rlrj"   noise="0.0"/>
+        <actuatorfrc name="rlyji"  actuator="rlyj"   noise="0.0"/>
+        <actuatorfrc name="rlkji"  actuator="rlkj"   noise="0.0"/>
+        <actuatorfrc name="rlaji"  actuator="rlaj"   noise="0.0"/>
+        
+        <!-- 腰部 -->
+        <actuatorfrc name="bm1ji"  actuator="bm1j"  noise="0.0"/>
+
+        <!-- 左手臂 -->
+        <actuatorfrc name="la1ji"  actuator="la1j"  noise="0.0"/> 
+        <actuatorfrc name="la2ji"  actuator="la2j"  noise="0.0"/> 
+        <actuatorfrc name="la3ji"  actuator="la3j"  noise="0.0"/> 
+        <actuatorfrc name="la4ji"  actuator="la4j"  noise="0.0"/> 
+        <actuatorfrc name="la5ji"  actuator="la5j"  noise="0.0"/>  
+        <!-- <actuatorfrc name="la6ji"  actuator="la6j"  noise="0.0"/>  -->
+        <!-- 右手臂 -->
+        <actuatorfrc name="ra1ji"  actuator="ra1j"  noise="0.0"/> 
+        <actuatorfrc name="ra2ji"  actuator="ra2j"  noise="0.0"/> 
+        <actuatorfrc name="ra3ji"  actuator="ra3j"  noise="0.0"/>   
+        <actuatorfrc name="ra4ji"  actuator="ra4j"  noise="0.0"/> 
+        <actuatorfrc name="ra5ji"  actuator="ra5j"  noise="0.0"/>
+        <!-- <actuatorfrc name="ra6ji"  actuator="ra6j"  noise="0.0"/> -->
+
+
+
+        <!-- IMU陀螺仪（匹配真实硬件参数） 安装在imu站点   噪声       截止频率（Hz），用于低通滤波 -->
+        <gyro          name="gyro"    site='imu' noise='0.005' cutoff='34.9'/>
+        <!-- IMU加速度计                          噪声           截止频率（Hz） -->
+        <accelerometer name="acc"     site='imu' noise='0.005' cutoff='157'/>
+        <!-- 帧四元数传感器              测量站点对象     四元数噪声     关联的站点名称 -->
+        <framequat     name='bq'      objtype='site' noise='0.001' objname='imu'/>
+    </sensor>
+
+
+
+
+
+
+</mujoco>
