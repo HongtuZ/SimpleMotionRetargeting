@@ -8,6 +8,11 @@ smpl:
 mujoco:
   xml_path: assets/ths_t1/urdf/ths_t1.xml
   root: base_link
+  foot_link_names:
+    - left_leg_toe_link
+    - left_leg_heel_link
+    - right_leg_toe_link
+    - right_leg_heel_link
   T_pose_joints:
 
 
@@ -26,8 +31,8 @@ smpl_robot_mapping:
   left_ankle: left_leg_ankle_link
   right_ankle: right_leg_ankle_link
   # spine3: 
-  # left_foot: 
-  # right_foot: 
+  left_foot: left_leg_toe_link
+  right_foot: right_leg_toe_link
   # neck: 
   # left_collar: 
   # right_collar: 

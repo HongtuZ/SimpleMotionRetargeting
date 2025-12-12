@@ -1492,4 +1492,48 @@
       effort="1"
       velocity="8" />
   </joint>
+  <link name="left_leg_toe_link">
+  </link>
+  <joint name="left_leg_toe_joint" type="fixed">
+    <origin
+      xyz="0.13 0 -0.05"
+      rpy="0 0 0" />
+    <parent
+      link="left_leg_ankle_link" />
+    <child
+      link="left_leg_toe_link" />
+  </joint>
+  <link name="right_leg_toe_link">
+  </link>
+  <joint name="right_leg_toe_joint" type="fixed">
+    <origin
+      xyz="0.13 0 -0.05"
+      rpy="0 0 0" />
+    <parent
+      link="right_leg_ankle_link" />
+    <child
+      link="right_leg_toe_link" />
+  </joint>
+  <link name="left_leg_heel_link">
+  </link>
+  <joint name="left_leg_heel_joint" type="fixed">
+    <origin
+      xyz="-0.05 0 -0.05"
+      rpy="0 0 0" />
+    <parent
+      link="left_leg_ankle_link" />
+    <child
+      link="left_leg_heel_link" />
+  </joint>
+  <link name="right_leg_heel_link">
+  </link>
+  <joint name="right_leg_heel_joint" type="fixed">
+    <origin
+      xyz="-0.05 0 -0.05"
+      rpy="0 0 0" />
+    <parent
+      link="right_leg_ankle_link" />
+    <child
+      link="right_leg_heel_link" />
+  </joint>
 </robot>

@@ -10,6 +10,7 @@ from utils.mujoco_util import MujocoModel
 from pathlib import Path
 from collections import deque
 from scipy.spatial.transform import Rotation as R
+import utils.pytorch_util as ptu
 
 def smpl_motion_fit(data_path: str, smpl_model, mj_model):
     # Load motion capture data
@@ -35,7 +36,6 @@ def smpl_motion_fit(data_path: str, smpl_model, mj_model):
     best_batch_link_pose = None
 
     joint_limits = torch.tensor(mj_model.joint_limits, dtype=torch.float32, device=mj_model.device)
-    beta = 0.05
     loss_history = deque(maxlen=10)
 
     # Forward kinematics under default coordinate system
@@ -46,9 +46,14 @@ def smpl_motion_fit(data_path: str, smpl_model, mj_model):
     for iteration in tqdm(range(10000), desc='Fitting motion'):
         mj_link_pose_batch = mj_model.fk_batch(batch_joints)
         # Compute loss
-        loss_pos = torch.norm((mj_link_pose_batch[:, mj_model.selected_link_ids, :3, 3] - smpl_local_body_pose_batch[..., :3, 3]), dim=-1).mean()
-        loss_smooth = torch.mean((batch_joints[2:] - 2*batch_joints[1:-1] + batch_joints[:-2])**2)
-        total_loss = beta * loss_pos + (1-beta) * loss_smooth
+        # Local position loss
+        loss_local_pos = torch.norm((mj_link_pose_batch[:, mj_model.selected_link_ids, :3, 3] - smpl_local_body_pose_batch[..., :3, 3]), dim=-1).mean()
+        # Joint smooth loss
+        loss_joint_smooth = torch.mean((batch_joints[2:] - 2*batch_joints[1:-1] + batch_joints[:-2])**2)
+        # Joint vel loss
+        loss_joint_vel_smooth = torch.mean((batch_joints[1:] - batch_joints[:-1])**2)
+        # Total loss
+        total_loss = 0.05 * loss_local_pos + 0.95 * loss_joint_smooth + 0.1 * loss_joint_vel_smooth
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
@@ -62,17 +67,31 @@ def smpl_motion_fit(data_path: str, smpl_model, mj_model):
                 best_batch_joints = batch_joints.clone().detach()
                 best_batch_link_pose = mj_link_pose_batch.clone().detach()
         if iteration % 10 == 0:
-            loss_history.append(loss_pos)
-            tqdm.write(f'Iteration {iteration}, Pos Loss: {loss_pos:.4f}, Smooth Loss: {loss_smooth:.4f}, Total Loss: {loss_value:.4f}, Best Loss: {best_loss:.4f} Beta: {beta:.4f}')
+            loss_history.append(loss_local_pos.item())
+            tqdm.write(f'Iteration {iteration}, Local Pos Loss: {loss_local_pos:.4f}, Joint Smooth Loss: {loss_joint_smooth:.4f}, Joint Vel Smooth Loss: {loss_joint_vel_smooth:.4f}, Total Loss: {loss_value:.4f}, Best Loss: {best_loss:.4f}')
         if loss_history and iteration > 50:
             if abs(loss_history[0] - loss_history[-1]) < 1e-3:
                 print("Early stopping due to minimal loss improvement.")
                 break
-    # Calculate the offset z
+    # Calculate the ground z
     root_pose = mocap_data['root_pose']
     global_pose = torch.matmul(root_pose, best_batch_link_pose)
-    z_offset = torch.min(global_pose[..., 2, 3], dim=1, keepdim=True)
-    root_pose[..., 2, 3] -= z_offset.values
+    min_z, arg_min_z = torch.min(global_pose[..., 2, 3], dim=1)
+    foot_z_mask = torch.isin(arg_min_z, torch.tensor(mj_model.foot_link_ids).to(arg_min_z.device))
+    foot_vel = mocap_data['foot_vel']
+    foot_vel_mask = foot_vel < 0.02
+    stand_foot_z = min_z[foot_z_mask & foot_vel_mask]
+    ground_z = stand_foot_z.max().item()
+    print(f'ground_z: {ground_z}')
+    root_pose[..., 2, 3] += -ground_z + 0.01
+    # Adjust some faild frames
+    global_pose[..., 2, 3] += -ground_z
+    min_z, arg_min_z = torch.min(global_pose[..., 2, 3], dim=1)
+    z_adjust = torch.where(min_z < 0, -min_z, 0)
+    root_pose[..., 2, 3] += z_adjust[:, None]
+    # from utils.helper import show_data
+    # show_data(root_pose[..., 2, 3].cpu().numpy().squeeze(), 'root_z')
+
     try:
         results = {
             'fps': mocap_data['fps'],
@@ -94,7 +113,7 @@ def smpl_motion_fit_from_file(config_path: str, data_file: str):
     print("Loading SMPLX model...")
     smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device, shape_file=config.motion_retargeting.shape_file, retarget_fps=config.motion_retargeting.fps)
     print("Loading Mujoco model...")
-    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), device=device)
+    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.mujoco.foot_link_names, config.smpl_robot_mapping.values(), device=device)
     results = smpl_motion_fit(data_path=data_file, smpl_model=smpl_model, mj_model=mj_model)
     if results is None:
         return
@@ -104,14 +123,10 @@ def smpl_motion_fit_from_file(config_path: str, data_file: str):
     joblib.dump(results, str(save_path))
     # output format for beyond mimic
     root_pos = results['root_pos']
-    root_pos[..., 2] += 0.08
     root_rot = results['root_rot']
     dof_pos = results['dof_pos']
     traj = np.concatenate([root_pos, root_rot, dof_pos], axis=-1)
     np.savetxt(str(save_path).replace('.pkl', '.csv'), traj, delimiter=',')
-
-
-
 
 def smpl_motion_fit_from_directory(config_path: str, data_dir: str):
     config = OmegaConf.load(config_path)
@@ -120,11 +135,12 @@ def smpl_motion_fit_from_directory(config_path: str, data_dir: str):
     print("Loading SMPLX model...")
     smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device, shape_file=config.motion_retargeting.shape_file, retarget_fps=config.motion_retargeting.fps)
     print("Loading Mujoco model...")
-    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), device=device)
+    mj_model = MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.mujoco.foot_link_names, config.smpl_robot_mapping.values(), device=device)
 
     data_dir = Path(data_dir)
     mocap_files = []
-    for mocap_file in data_dir.rglob('*stageii.npz'):
+    for mocap_file in data_dir.rglob('*.npz'):
+    # for mocap_file in data_dir.rglob('*stageii.npz'):
     # for mocap_file in data_dir.rglob('*poses.npz'):
     # for mocap_file in data_dir.rglob('*.pkl'):
         save_path = Path('retargeted_data').joinpath(*mocap_file.with_suffix('.pkl').parts[1:])
@@ -141,6 +157,11 @@ def smpl_motion_fit_from_directory(config_path: str, data_dir: str):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         tqdm.write(f'Saving retargeted mocap data to {str(save_path)}')
         joblib.dump(results, str(save_path))
+        root_pos = results['root_pos']
+        root_rot = results['root_rot']
+        dof_pos = results['dof_pos']
+        traj = np.concatenate([root_pos, root_rot, dof_pos], axis=-1)
+        np.savetxt(str(save_path).replace('.pkl', '.csv'), traj, delimiter=',')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

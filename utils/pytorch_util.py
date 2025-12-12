@@ -1,5 +1,6 @@
 import torch
-from pytorch3d.transforms import so3_log_map, se3_exp_map
+from pytorch3d.transforms import so3_log_map, se3_exp_map, so3_exp_map
+from tqdm import tqdm
 
 
 def invert_se3(T):

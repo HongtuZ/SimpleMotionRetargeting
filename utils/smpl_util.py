@@ -40,6 +40,7 @@ class SmplModel:
             if link_name not in self.link_names:
                 raise ValueError(f"Selected link {link_name} not found in link names.")
             self.selected_link_ids.append(self.link_names.index(link_name))
+        self.foot_link_ids = [self.link_names.index(link_name) for link_name in ['left_ankle', 'right_ankle', 'left_foot', 'right_foot']]
 
         self.link_rot_mats = torch.from_numpy(R.from_quat([0.5, -0.5, -0.5, -0.5], scalar_first=True).as_matrix()).float().to(device).unsqueeze(0).unsqueeze(0)  # (1,1,3,3)
         self.base_rot_transform = torch.eye(4).float().to(self.device).unsqueeze(0).unsqueeze(0)  # (1,1,4,4)
@@ -156,6 +157,7 @@ class SmplModel:
             raise ValueError(f"Frame rate information not found in the SMPL-X data: {data_path}, available keys: {list(smplx_data.keys())}")
         fps = self.fps
         if fps is not None and fps < data_fps:
+            print(f"Interpolating motion capture data from {data_fps} fps to {fps} fps")
             transformation_matrices = ptu.interpolate_mocap_se3(
                 transformation_matrices, data_fps, fps
             )
@@ -164,7 +166,13 @@ class SmplModel:
             )
             num_frames = transformation_matrices.shape[0]
         else:
-            fps = data_fps
+            print(f"Motion capture data already at {data_fps} fps")
+            fps = data_fps.item()
+
+        foot_pos = transformation_matrices[:, self.foot_link_ids, :3, 3]
+        foot_vel = torch.zeros_like(foot_pos, device=foot_pos.device)
+        foot_vel[:-1] = (foot_pos[1:] - foot_pos[:-1]) * fps
+        foot_vel[-1] = foot_vel[-2]
 
         return {
             'fps': fps,
@@ -172,6 +180,7 @@ class SmplModel:
             "local_body_pose": transformation_matrices,
             'parent_ids': parents,
             'matching_ids': self.selected_link_ids,
+            'foot_vel': torch.norm(foot_vel, dim=-1).min(dim=-1).values,
         }
 
     def to_zup(self, transformation_matrices):
@@ -210,3 +219,35 @@ class SmplModel:
         root_transform = transformation_matrices[:, :1].clone()
         transformation_matrices = ptu.invert_se3(root_transform) @ transformation_matrices
         return transformation_matrices
+
+    def detect_concat_label(
+        self,
+        positions: torch.Tensor,
+        velocity: torch.Tensor,
+        vel_thres: float = 0.1,
+        height_thresh: float = 0.08,
+    ) -> torch.Tensor:
+        """Compute contact labels for all bodies using heuristics combining body height and velocities.
+
+        Args:
+            positions (torch.Tensor): [T, N_bodies, 3] global body positions
+            velocity (torch.Tensor): [T, N_bodies, 3] velocities, already multiplied by 1 / dt
+            vel_thres (float): threshold for body velocity (default: 0.15 m/s)
+            height_thresh (float): threshold for body height (default: 0.1 m)
+
+        Returns:
+            torch.Tensor: [T, N_bodies] contact labels, 1 for body contact with ground
+        """
+        # Compute velocity magnitude for each body
+        body_vel_magnitude = torch.linalg.norm(velocity, dim=-1)  # [T, N_bodies]
+
+        # Get height (z-coordinate) for each body
+        body_heights = positions[:, :, 2]  # [T, N_bodies] - assuming z is up
+
+        # Contact occurs when both velocity is low AND height is low
+        contacts = torch.logical_and(
+            body_vel_magnitude < vel_thres,
+            body_heights < height_thresh,
+        ).to(positions.dtype)
+
+        return contacts

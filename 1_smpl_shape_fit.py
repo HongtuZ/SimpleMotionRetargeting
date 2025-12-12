@@ -14,7 +14,7 @@ def smpl_shape_fit(config: OmegaConf, device='cpu'):
     device = torch.device(device)
     # Load the SMPLX model and rotate it to the desired orientation xforward-zup
     smpl_model = SmplModel(config.smpl.model_path, config.smpl.model_type, config.smpl.gender, config.smpl.ext, config.smpl_robot_mapping.keys(), device=device)
-    mj_model= MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.smpl_robot_mapping.values(), config.mujoco.T_pose_joints, device=device)
+    mj_model= MujocoModel(config.mujoco.xml_path, config.mujoco.root, config.mujoco.foot_link_names, config.smpl_robot_mapping.values(), config.mujoco.T_pose_joints, device=device)
     # helper.show_joints(smpl_model, mj_model, selected=False)
     # return
 

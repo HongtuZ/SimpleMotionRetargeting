@@ -6,7 +6,7 @@ import pytorch_kinematics as pk
 from scipy.spatial.transform import Rotation as R
 
 class MujocoModel:
-    def __init__(self, xml_file: str, root: str, selected_link_names = None, T_pose_joints = None, device='cpu'):
+    def __init__(self, xml_file: str, root: str, foot_link_names = None, selected_link_names = None, T_pose_joints = None, device='cpu'):
         self.device = device
         self.root = root
         self.model = mujoco.MjModel.from_xml_path(xml_file)
@@ -24,6 +24,7 @@ class MujocoModel:
 
         self.selected_link_names = list(selected_link_names) if selected_link_names is not None else self.link_names
         self.selected_link_ids = [self.link_names.index(link) for link in self.selected_link_names]
+        self.foot_link_ids = [self.link_names.index(link) for link in foot_link_names] if foot_link_names is not None else []
 
         if T_pose_joints is not None:
             for joint_name, joint_pos in T_pose_joints.items():

@@ -339,3 +339,18 @@ def show_frame(human_transformations, robot_transformations, ax=None, title="Hum
     ax.legend()
     plt.tight_layout()
     plt.show()
+
+def show_data(data_np, title="Data"):
+    # 创建图形
+    plt.figure(figsize=(12, 6))
+
+    # 绘制折线图
+    plt.plot(data_np, 'b-', linewidth=2)
+    plt.scatter(range(len(data_np)), data_np, s=20, c='red', alpha=0.6)
+
+    # 设置图表属性
+    plt.title(title, fontsize=16, fontweight='bold')
+    plt.xlabel('step', fontsize=12)
+    plt.grid(True, alpha=0.3, linestyle='--')
+    plt.tight_layout()
+    plt.show()

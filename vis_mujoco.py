@@ -20,6 +20,7 @@ def vis_mujoco(xml_path, motion_file_path):
     print('Loading motion data...')
     motion_data = joblib.load(motion_file_path)
     dt = 1.0 / motion_data['fps']
+    print('FPS:', motion_data['fps'])
 
     print("Loading Mujoco model...")
     mj_model = mujoco.MjModel.from_xml_path(xml_path)
@@ -41,8 +42,8 @@ def vis_mujoco(xml_path, motion_file_path):
         viewer.cam.distance = 2  # 相机距离
         # viewer.cam.azimuth = 180  # 水平旋转角度
         # 主循环
+        cnt = 0
         for root_pos, root_rot, dof_pos in zip(motion_data['root_pos'], motion_data['root_rot'], motion_data['dof_pos']):
-            root_pos[2] += 0.1
             t1 = time.perf_counter()
             mj_data.qpos[:3] = root_pos
             mj_data.qpos[3:7] = np.roll(root_rot, 1)  # xyzw -> wxyz
@@ -50,6 +51,9 @@ def vis_mujoco(xml_path, motion_file_path):
             mujoco.mj_forward(mj_model, mj_data)
             viewer.cam.lookat = root_pos
             viewer.sync()
+            cnt += 1
+            if cnt > 1000 and cnt % 100 == 0:
+                print(cnt)
             time.sleep(max(0, dt - (time.perf_counter() - t1))) # 控制循环频率
 
 
