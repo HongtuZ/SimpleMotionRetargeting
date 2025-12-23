@@ -12,6 +12,16 @@ A simple and clean motion retargeting repo extracted from the H2O motion retarge
 
 2. Download the AMASS dataset from [AMASS website](https://amass.is.tue.mpg.de/).
 
+3. Install the required packages:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    Install `pytorch3d` package:
+    ```bash
+    pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git@stable
+    ```
+
 ## Usage
 1. Create a config file in the `config` directory. You can refer to `config/orca.yaml` for an example.
     * because the SMPL model is in T-pose, and the root coordinate is y-up/z-forward by default, you need to adjust the 'smpl.rotation' to match your robot root coordinate system.

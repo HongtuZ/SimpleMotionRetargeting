@@ -79,9 +79,9 @@ def smpl_motion_fit(data_path: str, smpl_model, mj_model):
     min_z, arg_min_z = torch.min(global_pose[..., 2, 3], dim=1)
     foot_z_mask = torch.isin(arg_min_z, torch.tensor(mj_model.foot_link_ids).to(arg_min_z.device))
     foot_vel = mocap_data['foot_vel']
-    foot_vel_mask = foot_vel < 0.02
+    foot_vel_mask = foot_vel < 0.05
     stand_foot_z = min_z[foot_z_mask & foot_vel_mask]
-    ground_z = stand_foot_z.max().item()
+    ground_z = torch.max(stand_foot_z).item()
     print(f'ground_z: {ground_z}')
     root_pose[..., 2, 3] += -ground_z + 0.01
     # Adjust some faild frames
