@@ -19,7 +19,7 @@ A simple and clean motion retargeting repo extracted from the H2O motion retarge
 
     Install `pytorch3d` package:
     ```bash
-    pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git@stable
+    pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git
     ```
 
 ## Usage
@@ -29,10 +29,15 @@ A simple and clean motion retargeting repo extracted from the H2O motion retarge
 
 2. Fit the SMPL shape to the robot by running:
     ```bash
-        python 1_smpl_shape_fit.py --config config/your_config.yaml
+        python 1_smpl_shape_fit.py config/your_config.yaml
     ```
 
 3. Retarget motion by running:
     ```bash
-        python 2_smpl_motion_fit.py --config config/your_config.yaml --human path/to/your/amass/motion.npz
+        python 2_smpl_motion_fit.py config/your_config.yaml --data path/to/your/amass/motion.npz
+    ```
+
+4. Visualize the retargeted motion by running:
+    ```bash
+        python vis_mujoco.py config/your_config.yaml --data retargeted_data/path/to/your/amass/motion.pkl
     ```
